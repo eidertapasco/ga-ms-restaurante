@@ -1,8 +1,8 @@
 package co.edu.sena.ga_ms_restaurante.model;
 
+import co.edu.sena.ga_lib_common.enums.global.EstadoPedido;
 import jakarta.persistence.*;
 import lombok.*;
-
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -62,7 +62,7 @@ public class Pedido {
         this.createdAt = Instant.now();
         this.updatedAt = Instant.now();
         if (this.estado == null) {
-            this.estado = EstadoPedido.REGISTRADO;
+            this.estado = EstadoPedido.ABIERTO;
         }
         if (this.totalFinal == null) {
             this.totalFinal = BigDecimal.ZERO;

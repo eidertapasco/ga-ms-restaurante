@@ -79,6 +79,13 @@
             <scope>test</scope>
         </dependency>
 
+        <!-- Common Library-->
+        <dependency>
+            <groupId>co.edu.sena</groupId>
+            <artifactId>ga-lib-common</artifactId>
+            <version>0.0.1-SNAPSHOT</version>
+        </dependency>
+
     </dependencies>
 
     <dependencyManagement>

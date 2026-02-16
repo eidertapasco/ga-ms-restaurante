@@ -1,5 +1,6 @@
 package co.edu.sena.ga_ms_restaurante.mapper;
 
+import co.edu.sena.ga_lib_common.enums.global.EstadoPedido;
 import co.edu.sena.ga_ms_restaurante.dto.request.CrearDetallePedidoRequestDTO;
 import co.edu.sena.ga_ms_restaurante.dto.request.CrearPedidoRequestDTO;
 import co.edu.sena.ga_ms_restaurante.dto.response.DetallePedidoResponseDTO;

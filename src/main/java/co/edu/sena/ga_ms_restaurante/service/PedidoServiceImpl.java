@@ -1,11 +1,11 @@
 package co.edu.sena.ga_ms_restaurante.service;
 
+import co.edu.sena.ga_lib_common.enums.global.EstadoPedido;
 import co.edu.sena.ga_ms_restaurante.model.*;
 import co.edu.sena.ga_ms_restaurante.repository.PedidoRepository;
 import co.edu.sena.ga_ms_restaurante.repository.ProductoRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
 import java.math.BigDecimal;
 import java.util.List;
 
@@ -56,7 +56,7 @@ public class PedidoServiceImpl implements PedidoService {
         }
 
         pedido.setTotalFinal(total);
-        pedido.setEstado(EstadoPedido.REGISTRADO);
+        pedido.setEstado(EstadoPedido.ABIERTO);
 
         return pedidoRepository.save(pedido);
     }

@@ -1,20 +1,18 @@
 package co.edu.sena.ga_ms_restaurante.controller;
 
+import co.edu.sena.ga_lib_common.enums.global.EstadoPedido;
 import co.edu.sena.ga_ms_restaurante.dto.request.CrearPedidoRequestDTO;
 import co.edu.sena.ga_ms_restaurante.dto.response.PedidoResponseDTO;
 import co.edu.sena.ga_ms_restaurante.mapper.PedidoMapper;
 import co.edu.sena.ga_ms_restaurante.model.DetallePedido;
-import co.edu.sena.ga_ms_restaurante.model.EstadoPedido;
 import co.edu.sena.ga_ms_restaurante.model.Pedido;
 import co.edu.sena.ga_ms_restaurante.service.PedidoService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-
 import java.util.List;
 import java.util.stream.Collectors;
-
 import io.swagger.v3.oas.annotations.tags.Tag;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
