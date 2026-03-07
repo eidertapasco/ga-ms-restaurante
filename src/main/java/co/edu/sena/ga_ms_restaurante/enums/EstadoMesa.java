@@ -1,4 +1,4 @@
-package co.edu.sena.ga_ms_restaurante.model;
+package co.edu.sena.ga_ms_restaurante.enums;
 
 public enum EstadoMesa {
     LIBRE,

@@ -1,6 +1,7 @@
 package co.edu.sena.ga_ms_restaurante.model;
 
 
+import co.edu.sena.ga_ms_restaurante.enums.EstadoMesa;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -24,11 +25,10 @@ public class Mesa {
     @Column( name = "numero", nullable = false, unique = true)
     private Integer numero;
 
-    @Column(nullable = false)
-    private Integer capacidad;
+    @Column(name = "capacidad",nullable = false, length = 50)
+    private String capacidad;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private EstadoMesa estado;
-
 }
