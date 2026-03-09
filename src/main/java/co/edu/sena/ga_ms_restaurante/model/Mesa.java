@@ -23,10 +23,10 @@ public class Mesa {
     private UUID id;
 
     @Column( name = "numero", nullable = false, unique = true)
-    private Integer numero;
+    private String numero;
 
     @Column(name = "capacidad",nullable = false, length = 50)
-    private String capacidad;
+    private Integer capacidad;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)

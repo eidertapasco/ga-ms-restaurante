@@ -1,21 +1,9 @@
 package co.edu.sena.ga_ms_restaurante.dto.request;
+import jakarta.validation.constraints.NotBlank;
 
-import co.edu.sena.ga_ms_restaurante.enums.EstadoMesa;
-import jakarta.validation.constraints.NotNull;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class CrearMesaRequestDTO {
-    @NotNull
-    private Integer numero;
-    @NotNull
-    private String capacidad;
-    @NotNull
-    private EstadoMesa estado;
+public record CrearMesaRequestDTO(
+        @NotBlank(message = "El número de la mesa no puede estar vacío")
+        String numeroMesa,
+        @NotBlank(message = "La capacidad no puede estar vacía")
+        Integer capacidad) {
 }
