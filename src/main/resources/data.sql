@@ -1,0 +1,7 @@
+INSERT INTO MESAS (id_mesa, numero_mesa, capacidad, estado) VALUES
+(RANDOM_UUID(), 'M1', 4, 'DISPONIBLE'),
+(RANDOM_UUID(), 'M2', 2, 'OCUPADA'),
+(RANDOM_UUID(), 'M3', 6, 'RESERVADA'),
+(RANDOM_UUID(), 'M4', 4, 'DISPONIBLE'),
+(RANDOM_UUID(), 'M5', 8, 'OCUPADA'),
+(RANDOM_UUID(), 'M6', 4, 'OCUPADA');
