@@ -9,7 +9,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 @Service
-@RequiredArgsConstructor
+@RequiredArgsConstructor //crea un constructor para todos los campos marcados como final
 public class MesaService {
 
     private final MesaRepository mesaRepository;
