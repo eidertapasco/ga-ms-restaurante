@@ -11,8 +11,8 @@ import java.util.Optional;
 public interface MesaRepository extends JpaRepository<Mesa, UUID>{
 
     // Necesario para que el Service valide si la mesa ya existe
-    boolean existsByNumero(Integer numero);
+    boolean existsByNumeroMesa(String numeroMesa);
 
     // Útil por si luego necesitan buscar una mesa específica por su número
-    Optional<Mesa> findByNumero(Integer numero);
+    Optional<Mesa> findByNumeroMesa(String numeroMesa);
 }
