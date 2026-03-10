@@ -23,7 +23,7 @@ public class Mesa {
     private UUID id;
 
     @Column( name = "numero", nullable = false, unique = true)
-    private String numero;
+    private String numeroMesa;
 
     @Column(name = "capacidad",nullable = false, length = 50)
     private Integer capacidad;
