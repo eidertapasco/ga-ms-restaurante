@@ -6,5 +6,5 @@ public record MesaResponseDTO(
         UUID idMesa,
         String numeroMesa,
         Integer capacidad,
-        String estado) {
-}
+        String estado
+) { }
