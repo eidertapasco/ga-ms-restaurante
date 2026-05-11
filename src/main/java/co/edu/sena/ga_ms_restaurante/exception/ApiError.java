@@ -4,6 +4,7 @@ import java.time.LocalDateTime;
 
 public class ApiError {
 
+    /*
     private int status;
     private String message;
     private LocalDateTime timestamp;
@@ -25,4 +26,5 @@ public class ApiError {
     public LocalDateTime getTimestamp() {
         return timestamp;
     }
+    */
 }

@@ -1,15 +1,15 @@
 package co.edu.sena.ga_ms_restaurante.exception;
 
-import org.springframework.http.HttpStatus;
+/*import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
-@RestControllerAdvice
+@RestControllerAdvice*/
 public class GlobalExceptionHandler {
 
-    //1. Errores de negocio (IllegalArgumentException)
+    /*1. Errores de negocio (IllegalArgumentException)
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ApiError> handleIllegalArgument(IllegalArgumentException ex) {
 
@@ -57,4 +57,5 @@ public class GlobalExceptionHandler {
                 .status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(error);
     }
+    */
 }
