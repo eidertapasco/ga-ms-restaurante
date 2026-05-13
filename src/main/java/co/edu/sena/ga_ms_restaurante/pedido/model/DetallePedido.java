@@ -39,6 +39,9 @@ public class DetallePedido {
     @Column(name = "subtotal_linea", nullable = false, precision = 12, scale = 2)
     private BigDecimal subtotalLinea; // cantidad * precioUnitario
 
+    @Column(nullable = false)
+    private String categoria; // "COMIDA" | "BEBIDA"
+
     @Column(length = 255)
     private String observaciones;
 }
