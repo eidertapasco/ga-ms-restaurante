@@ -99,11 +99,11 @@
         </dependency>
 
         <!-- Common Library-->
-        <dependency>
+        <!-- <dependency>
             <groupId>co.edu.sena</groupId>
             <artifactId>ga-lib-common</artifactId>
             <version>0.0.1-SNAPSHOT</version>
-        </dependency>
+        </dependency> -->
 
     </dependencies>
 

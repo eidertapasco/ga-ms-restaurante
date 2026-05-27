@@ -1,0 +1,59 @@
+version: '3.8'
+
+services:
+
+  # ─── Base de datos MySQL ───────────────────────────────────────────────────
+  mysql:
+    image: mysql:8.0
+    container_name: gastrosena-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: modulo_restaurante
+      MYSQL_USER: gastrosena
+      MYSQL_PASSWORD: gastrosena123
+    ports:
+      - "3307:3306"   # 3307 en tu PC → 3306 dentro del contenedor
+      # usamos 3307 para no chocar con MySQL local si lo tienes
+    volumes:
+      - mysql_data:/var/lib/mysql   # los datos persisten aunque el contenedor se apague
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── Mensajería RabbitMQ ───────────────────────────────────────────────────
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: gastrosena-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    ports:
+      - "5672:5672"     # puerto de mensajería
+      - "15672:15672"   # panel web (http://localhost:15672)
+
+  # ─── Backend Spring Boot ───────────────────────────────────────────────────
+  backend:
+    build:
+      context: .        # busca el Dockerfile en la raíz
+      dockerfile: Dockerfile
+    container_name: gastrosena-backend
+    environment:
+      DB_USERNAME: root
+      DB_PASSWORD: root
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USER: guest
+      RABBITMQ_PASS: guest
+    ports:
+      - "8080:8080"
+    depends_on:
+      mysql:
+        condition: service_healthy   # espera a que MySQL esté listo
+      rabbitmq:
+        condition: service_started
+    restart: on-failure  # si falla al conectar, intenta reiniciar
+
+# ─── Volúmenes persistentes ────────────────────────────────────────────────
+volumes:
+  mysql_data:
