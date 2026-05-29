@@ -45,6 +45,7 @@ services:
       RABBITMQ_HOST: rabbitmq
       RABBITMQ_USER: guest
       RABBITMQ_PASS: guest
+      SPRING_JPA_PROPERTIES_HIBERNATE_TYPE_PREFERRED_UUID_JDBC_TYPE: CHAR  # ← Correccion del bug de UUIDs
     ports:
       - "8080:8080"
     depends_on:
