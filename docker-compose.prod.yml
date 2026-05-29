@@ -30,7 +30,7 @@ services:
       - "15672:15672"
 
   backend:
-    image: eidertapasco/ga-ms-restaurante:latest  # ← imagen de Docker Hub, no build local
+    image: eidertapasco/ga-ms-restaurante:latest
     container_name: gastrosena-backend
     environment:
       DB_USERNAME: root
@@ -38,7 +38,7 @@ services:
       RABBITMQ_HOST: rabbitmq
       RABBITMQ_USER: guest
       RABBITMQ_PASS: guest
-      SPRING_JPA_PROPERTIES_HIBERNATE_TYPE_PREFERRED__UUID__JDBC__TYPE: CHAR
+      SPRING_APPLICATION_JSON: '{"spring":{"jpa":{"properties":{"hibernate":{"type":{"preferred_uuid_jdbc_type":"CHAR"}}}}}}'
     ports:
       - "8080:8080"
     depends_on:
