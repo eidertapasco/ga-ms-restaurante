@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - feature/docker
+      - develop
 
 jobs:
   build-and-push:

@@ -33,6 +33,7 @@ services:
     image: eidertapasco/ga-ms-restaurante:latest
     container_name: gastrosena-backend
     environment:
+      SPRING_PROFILES_ACTIVE: prod        # ← (respaldo al Dockerfile)
       DB_USERNAME: root
       DB_PASSWORD: root
       RABBITMQ_HOST: rabbitmq
