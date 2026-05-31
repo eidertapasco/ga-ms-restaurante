@@ -28,6 +28,11 @@ public class MesaController {
         return ResponseEntity.ok(mesaService.listarMesasActivas());
     }
 
+    @GetMapping("/inactivas")
+    public ResponseEntity<List<MesaResponse>> listarInactivas() {
+        return ResponseEntity.ok(mesaService.listarMesasInactivas());
+    }
+
     @GetMapping("/estado/{estado}")
     public ResponseEntity<List<MesaResponse>> listarPorEstado(
             @PathVariable EstadoMesa estado) {

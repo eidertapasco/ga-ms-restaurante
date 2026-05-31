@@ -12,6 +12,8 @@ public interface MesaRepository extends JpaRepository<Mesa, UUID> {
 
     List<Mesa> findByActivoTrue();
 
+    List<Mesa> findByActivoFalse(); // AÑADIDO
+
     List<Mesa> findByActivoTrueAndEstado(EstadoMesa estado);
 
     Optional<Mesa> findByNombre(String nombre);

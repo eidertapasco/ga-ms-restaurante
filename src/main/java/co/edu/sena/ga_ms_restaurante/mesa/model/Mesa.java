@@ -27,6 +27,9 @@ public class Mesa {
     @Column(length = 50)
     private String zona;
 
+    @Column(length = 255)
+    private String observaciones;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private EstadoMesa estado;
