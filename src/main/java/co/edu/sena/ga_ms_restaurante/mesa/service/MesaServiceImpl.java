@@ -27,6 +27,12 @@ public class MesaServiceImpl implements MesaService {
         return mesaMapper.toResponseList(mesaRepository.findByActivoTrue());
     }
 
+    // ---> NUEVO MÉTODO AÑADIDO PARA EL FRONTEND <---
+    @Override
+    public List<MesaResponse> listarMesasInactivas() {
+        return mesaMapper.toResponseList(mesaRepository.findByActivoFalse());
+    }
+
     @Override
     public List<MesaResponse> listarMesasPorEstado(EstadoMesa estado) {
         return mesaMapper.toResponseList(

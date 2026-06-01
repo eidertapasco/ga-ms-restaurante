@@ -12,6 +12,8 @@ public interface MesaService {
 
     List<MesaResponse> listarMesasActivas();
 
+    List<MesaResponse> listarMesasInactivas(); // AÑADIDO
+
     List<MesaResponse> listarMesasPorEstado(EstadoMesa estado);
 
     MesaResponse buscarPorId(UUID id);

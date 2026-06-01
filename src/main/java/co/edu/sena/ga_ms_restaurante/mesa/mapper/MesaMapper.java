@@ -18,6 +18,7 @@ public class MesaMapper {
                 .nombre(mesa.getNombre())
                 .capacidad(mesa.getCapacidad())
                 .zona(mesa.getZona())
+                .observaciones(mesa.getObservaciones())
                 .estado(mesa.getEstado())
                 .activo(mesa.getActivo())
                 .build();
@@ -34,6 +35,7 @@ public class MesaMapper {
                 .nombre(request.getNombre())
                 .capacidad(request.getCapacidad())
                 .zona(request.getZona())
+                .observaciones(request.getObservaciones()) // AÑADIDO
                 .estado(EstadoMesa.LIBRE)
                 .activo(true)
                 .build();
@@ -43,5 +45,6 @@ public class MesaMapper {
         if (request.getNombre() != null) mesa.setNombre(request.getNombre());
         if (request.getCapacidad() != null) mesa.setCapacidad(request.getCapacidad());
         if (request.getZona() != null) mesa.setZona(request.getZona());
+        if (request.getObservaciones() != null) mesa.setObservaciones(request.getObservaciones()); // AÑADIDO
     }
 }

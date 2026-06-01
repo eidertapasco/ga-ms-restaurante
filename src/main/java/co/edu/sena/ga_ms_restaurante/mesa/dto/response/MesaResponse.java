@@ -18,6 +18,7 @@ public class MesaResponse {
     private String nombre;
     private Integer capacidad;
     private String zona;
+    private String observaciones;
     private EstadoMesa estado;
     private Boolean activo;
 }

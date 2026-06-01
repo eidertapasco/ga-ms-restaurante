@@ -23,4 +23,7 @@ public class MesaCreateRequest {
 
     @Size(max = 50, message = "La zona no puede superar 50 caracteres")
     private String zona;
+
+    @Size(max = 255, message = "Las observaciones no pueden superar 255 caracteres")
+    private String observaciones;
 }
