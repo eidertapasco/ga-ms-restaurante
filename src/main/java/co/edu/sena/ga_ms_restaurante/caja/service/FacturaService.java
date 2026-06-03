@@ -12,4 +12,7 @@ public interface FacturaService {
     FacturaResponse buscarFacturaPorId(UUID facturaId);
     FacturaResponse buscarFacturaPorNumero(String numeroFactura);
     List<FacturaResponse> listarFacturasDeSesion(UUID sesionId);
+
+    // Método para generar el PDF de la factura
+    byte[] generarFacturaPdf(UUID facturaId);
 }

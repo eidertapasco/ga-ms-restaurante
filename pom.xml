@@ -98,6 +98,13 @@
             <scope>test</scope>
         </dependency>
 
+        <!-- openpdf -->
+        <dependency>
+            <groupId>com.github.librepdf</groupId>
+            <artifactId>openpdf</artifactId>
+            <version>1.3.30</version>
+        </dependency>
+
         <!-- Common Library-->
         <!-- <dependency>
             <groupId>co.edu.sena</groupId>

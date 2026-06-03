@@ -9,6 +9,10 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+// AÑADIDO: Importaciones para el manejo de archivos HTTP y PDF
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+
 import java.util.List;
 import java.util.UUID;
 
@@ -43,5 +47,19 @@ public class FacturaController {
     @GetMapping("/sesion/{sesionId}")
     public ResponseEntity<List<FacturaResponse>> facturasDeSesion(@PathVariable UUID sesionId) {
         return ResponseEntity.ok(facturaService.listarFacturasDeSesion(sesionId));
+    }
+
+    // AÑADIDO: Endpoint para descargar la factura en formato PDF
+    @GetMapping("/{id}/pdf")
+    public ResponseEntity<byte[]> descargarFacturaPdf(@PathVariable UUID id) {
+        byte[] pdfBytes = facturaService.generarFacturaPdf(id);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_PDF);
+        headers.setContentDispositionFormData("attachment", "Factura-" + id + ".pdf");
+
+        return ResponseEntity.ok()
+                .headers(headers)
+                .body(pdfBytes);
     }
 }
