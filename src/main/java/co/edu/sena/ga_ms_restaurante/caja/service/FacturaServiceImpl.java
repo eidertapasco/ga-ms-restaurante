@@ -16,6 +16,7 @@ import co.edu.sena.ga_ms_restaurante.mesa.enums.EstadoMesa;
 import co.edu.sena.ga_ms_restaurante.mesa.model.Mesa;
 import co.edu.sena.ga_ms_restaurante.mesa.repository.MesaRepository;
 import co.edu.sena.ga_ms_restaurante.pedido.enums.EstadoPedido;
+import co.edu.sena.ga_ms_restaurante.pedido.model.DetallePedido; // AÑADIDO
 import co.edu.sena.ga_ms_restaurante.pedido.model.Pedido;
 import co.edu.sena.ga_ms_restaurante.pedido.repository.PedidoRepository;
 import co.edu.sena.ga_ms_restaurante.security.UserContextHolder;
@@ -23,6 +24,17 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+// Importaciones para la generación de PDF y estilos (NUEVAS)
+import com.lowagie.text.Document;
+import com.lowagie.text.Element;
+import com.lowagie.text.Font;
+import com.lowagie.text.FontFactory;
+import com.lowagie.text.Paragraph;
+import com.lowagie.text.pdf.PdfPCell;
+import com.lowagie.text.pdf.PdfPTable;
+import com.lowagie.text.pdf.PdfWriter;
+import java.io.ByteArrayOutputStream;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -145,6 +157,119 @@ public class FacturaServiceImpl implements FacturaService {
         sesionCajaRepository.findById(sesionId)
                 .orElseThrow(() -> new ResourceNotFoundException("Sesión de caja no encontrada con id: " + sesionId));
         return facturaMapper.toFacturaResponseList(facturaRepository.findBySesionCaja_Id(sesionId));
+    }
+
+    // MÉTODO PDF REDISEÑADO CON FORMATO DE TIRILLA E ITEMS
+    @Override
+    @Transactional(readOnly = true)
+    public byte[] generarFacturaPdf(UUID facturaId) {
+        Factura factura = obtenerFacturaOFalla(facturaId);
+
+        try (ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            Document document = new Document();
+            PdfWriter.getInstance(document, out);
+            document.open();
+
+            // 1. Configurar los tipos de letra (Fuentes)
+            Font fontTitulo = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 18);
+            Font fontNormal = FontFactory.getFont(FontFactory.HELVETICA, 12);
+            Font fontBold = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 12);
+
+            // 2. Encabezado centrado
+            Paragraph titulo = new Paragraph("GastroSena\n¡Sabor y Tradición!\n", fontTitulo);
+            titulo.setAlignment(Element.ALIGN_CENTER);
+            document.add(titulo);
+
+            // Formatear la fecha para que se vea amigable (ej: 03/06/26 16:03:52)
+            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd/MM/yy HH:mm:ss");
+            String fechaFormateada = factura.getFechaEmision() != null ?
+                    factura.getFechaEmision().format(formatter) :
+                    LocalDateTime.now().format(formatter);
+
+            // 3. Información general del recibo
+            document.add(new Paragraph("NIT-123456789-0", fontBold)); // NIT ficticio
+            document.add(new Paragraph("Mesa: " + factura.getPedido().getMesa().getNombre(), fontNormal));
+            document.add(new Paragraph("Personas: " + factura.getPedido().getNumeroComensales(), fontNormal));
+            document.add(new Paragraph("ID Factura: " + factura.getNumeroFactura(), fontNormal));
+            document.add(new Paragraph("Fecha: " + fechaFormateada, fontNormal));
+
+            // Como el mesero es un UUID, mostramos solo los primeros 8 caracteres para que no ocupe tanto espacio
+            String cajeroIdCorto = factura.getCajeroId().toString().substring(0, 8);
+            document.add(new Paragraph("Cajero: #" + cajeroIdCorto, fontNormal));
+            document.add(new Paragraph("Método de Pago: " + factura.getMetodoPago(), fontNormal));
+
+            document.add(new Paragraph("\n"));
+
+            // 4. Crear la tabla para los items (Cantidad | Nombre | Precio)
+            PdfPTable tablaItems = new PdfPTable(3);
+            tablaItems.setWidthPercentage(100);
+            // Proporciones: La columna del nombre es la más ancha
+            tablaItems.setWidths(new float[]{1f, 5f, 2f});
+
+            // Recorrer los detalles (items) del pedido
+            for (DetallePedido detalle : factura.getPedido().getDetalles()) {
+                // Cantidad
+                PdfPCell cellCant = new PdfPCell(new Paragraph(String.valueOf(detalle.getCantidad()), fontNormal));
+                cellCant.setBorder(PdfPCell.NO_BORDER);
+
+                // Nombre del Producto
+                PdfPCell cellNombre = new PdfPCell(new Paragraph(detalle.getNombreProducto(), fontNormal));
+                cellNombre.setBorder(PdfPCell.NO_BORDER);
+
+                // Precio (Alineado a la derecha)
+                PdfPCell cellPrecio = new PdfPCell(new Paragraph("$" + detalle.getSubtotalLinea(), fontNormal));
+                cellPrecio.setBorder(PdfPCell.NO_BORDER);
+                cellPrecio.setHorizontalAlignment(Element.ALIGN_RIGHT);
+
+                tablaItems.addCell(cellCant);
+                tablaItems.addCell(cellNombre);
+                tablaItems.addCell(cellPrecio);
+            }
+            // Añadir la tabla de items al documento
+            document.add(tablaItems);
+
+            document.add(new Paragraph("-------------------------------------------------------------------"));
+
+            // 5. Crear tabla para Totales (Subtotal y Total alineados a la derecha)
+            PdfPTable tablaTotales = new PdfPTable(2);
+            tablaTotales.setWidthPercentage(100);
+            tablaTotales.setWidths(new float[]{3f, 1f});
+
+            // Subtotal
+            PdfPCell cellSubLabel = new PdfPCell(new Paragraph("Subtotal", fontNormal));
+            cellSubLabel.setBorder(PdfPCell.NO_BORDER);
+            PdfPCell cellSubValor = new PdfPCell(new Paragraph("$" + factura.getSubtotal(), fontNormal));
+            cellSubValor.setBorder(PdfPCell.NO_BORDER);
+            cellSubValor.setHorizontalAlignment(Element.ALIGN_RIGHT);
+
+            tablaTotales.addCell(cellSubLabel);
+            tablaTotales.addCell(cellSubValor);
+
+            // Total Final
+            PdfPCell cellTotLabel = new PdfPCell(new Paragraph("Total", fontBold));
+            cellTotLabel.setBorder(PdfPCell.NO_BORDER);
+            PdfPCell cellTotValor = new PdfPCell(new Paragraph("$" + factura.getTotal(), fontBold));
+            cellTotValor.setBorder(PdfPCell.NO_BORDER);
+            cellTotValor.setHorizontalAlignment(Element.ALIGN_RIGHT);
+
+            tablaTotales.addCell(cellTotLabel);
+            tablaTotales.addCell(cellTotValor);
+
+            document.add(tablaTotales);
+
+            document.add(new Paragraph("\n"));
+
+            // 6. Pie de página centrado
+            Paragraph footer = new Paragraph("¡Gracias por su visita!", fontBold);
+            footer.setAlignment(Element.ALIGN_CENTER);
+            document.add(footer);
+
+            document.close();
+            return out.toByteArray();
+
+        } catch (Exception e) {
+            throw new BusinessRuleException("Error al generar el PDF de la factura: " + e.getMessage());
+        }
     }
 
     private Factura obtenerFacturaOFalla(UUID id) {
