@@ -1,0 +1,91 @@
+services:
+
+  mysql:
+    image: mysql:8.0
+    container_name: gastrosena-mysql
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: modulo_restaurante
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_restaurante_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mysql-barismo:
+    image: mysql:8.0
+    container_name: gastrosena-mysql-barismo
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: ProyectoFormativo
+    ports:
+      - "3308:3306"
+    volumes:
+      - mysql_barismo_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: gastrosena-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+
+  restaurante:
+    image: eidertapasco/ga-ms-restaurante:latest
+    container_name: gastrosena-restaurante
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      DB_USERNAME: root
+      DB_PASSWORD: root
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USER: guest
+      RABBITMQ_PASS: guest
+      SPRING_APPLICATION_JSON: '{"spring":{"jpa":{"properties":{"hibernate":{"type":{"preferred_uuid_jdbc_type":"CHAR"}}}}}}'
+    ports:
+      - "8080:8080"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_started
+    restart: on-failure
+
+  barismo:
+    image: jhojanalvarez71/ga-ms-barismo:latest
+    container_name: gastrosena-barismo
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USER: guest
+      RABBITMQ_PASS: guest
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql-barismo:3306/ProyectoFormativo?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: root
+    ports:
+      - "8081:8086"
+    depends_on:
+      mysql-barismo:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_started
+      restaurante:
+        condition: service_started
+    restart: on-failure
+
+volumes:
+  mysql_restaurante_data:
+  mysql_barismo_data:
