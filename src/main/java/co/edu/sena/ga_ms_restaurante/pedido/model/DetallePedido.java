@@ -54,6 +54,7 @@ public class DetallePedido {
      * Valores: "PENDIENTE" | "PREPARANDO" | "TERMINADO" | "LISTO"
      * La columna se crea automáticamente con ddl-auto=update.
      */
+    @Builder.Default
     @Column(name = "estado_detalle", length = 30)
     private String estadoDetalle = "PENDIENTE";
 }

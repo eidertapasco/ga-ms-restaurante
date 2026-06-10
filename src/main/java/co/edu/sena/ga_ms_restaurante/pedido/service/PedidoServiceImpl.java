@@ -100,21 +100,26 @@ public class PedidoServiceImpl implements PedidoService {
 
         validarPropietarioOInstructor(pedido);
 
-        // Separar ítems por categoría
-        List<DetallePedidoRequest> todosLosItems = pedido.getDetalles().stream()
-                .map(this::detalleToRequest)
-                .toList();
-
-        List<PedidoCocinaEvent.Item> itemsCocina = todosLosItems.stream()
+        // Separar ítems por categoría directamente desde las entidades DetallePedido
+        // (se elimina la conversión intermedia a DetallePedidoRequest)
+        List<PedidoCocinaEvent.Item> itemsCocina = pedido.getDetalles().stream()
                 .filter(d -> "COMIDA".equalsIgnoreCase(d.getCategoria()))
                 .map(d -> new PedidoCocinaEvent.Item(
-                        d.getProductoId(), d.getNombreProducto(), d.getCantidad(), d.getObservaciones()))
+                        d.getId().toString(),
+                        d.getProductoId(),
+                        d.getNombreProducto(),
+                        d.getCantidad(),
+                        d.getObservaciones()))
                 .toList();
 
-        List<PedidoBarEvent.Item> itemsBar = todosLosItems.stream()
+        List<PedidoBarEvent.Item> itemsBar = pedido.getDetalles().stream()
                 .filter(d -> "BEBIDA".equalsIgnoreCase(d.getCategoria()))
                 .map(d -> new PedidoBarEvent.Item(
-                        d.getProductoId(), d.getNombreProducto(), d.getCantidad(), d.getObservaciones()))
+                        d.getId().toString(),
+                        d.getProductoId(),
+                        d.getNombreProducto(),
+                        d.getCantidad(),
+                        d.getObservaciones()))
                 .toList();
 
         // Publicar eventos solo si hay ítems de esa categoría
@@ -298,24 +303,5 @@ public class PedidoServiceImpl implements PedidoService {
             throw new BusinessRuleException(
                     "No tienes permiso para modificar este pedido");
         }
-    }
-
-    /**
-     * Convierte DetallePedido (entidad guardada) a DetallePedidoRequest
-     * para poder separar por categoría al confirmar.
-     * NOTA: la categoría no se persiste en DetallePedido — se necesita
-     * pasarla en el request original o añadir el campo al modelo.
-     * Aquí asumimos que el campo 'observaciones' NO contiene la categoría
-     * y que DetallePedido tendrá un campo 'categoria' adicional (ver nota abajo).
-     */
-    private DetallePedidoRequest detalleToRequest(DetallePedido d) {
-        DetallePedidoRequest req = new DetallePedidoRequest();
-        req.setProductoId(d.getProductoId());
-        req.setNombreProducto(d.getNombreProducto());
-        req.setCantidad(d.getCantidad());
-        req.setPrecioUnitario(d.getPrecioUnitario());
-        req.setCategoria(d.getCategoria()); // ver nota arquitectónica abajo
-        req.setObservaciones(d.getObservaciones());
-        return req;
     }
 }
