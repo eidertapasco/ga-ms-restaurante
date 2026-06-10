@@ -44,4 +44,16 @@ public class DetallePedido {
 
     @Column(length = 255)
     private String observaciones;
+
+    /**
+     * Estado informativo del ítem según Cocina o Bar.
+     * No afecta la lógica de negocio (esa la gobierna Pedido.estado).
+     * Se actualiza vía EstadoPlatoListener cuando Cocina/Bar notifican
+     * que un plato o bebida individual cambió de estado.
+     *
+     * Valores: "PENDIENTE" | "PREPARANDO" | "TERMINADO" | "LISTO"
+     * La columna se crea automáticamente con ddl-auto=update.
+     */
+    @Column(name = "estado_detalle", length = 30)
+    private String estadoDetalle = "PENDIENTE";
 }
