@@ -1,7 +1,9 @@
 package co.edu.sena.ga_ms_restaurante.pedido.service;
 
+import co.edu.sena.ga_ms_restaurante.amqp.dto.CancelacionEvent;
 import co.edu.sena.ga_ms_restaurante.amqp.dto.PedidoBarEvent;
 import co.edu.sena.ga_ms_restaurante.amqp.dto.PedidoCocinaEvent;
+import co.edu.sena.ga_ms_restaurante.amqp.publisher.CancelacionPublisher;
 import co.edu.sena.ga_ms_restaurante.amqp.publisher.PedidoBarPublisher;
 import co.edu.sena.ga_ms_restaurante.amqp.publisher.PedidoCocinaPublisher;
 import co.edu.sena.ga_ms_restaurante.exception.custom.BusinessRuleException;
@@ -9,7 +11,6 @@ import co.edu.sena.ga_ms_restaurante.exception.custom.ResourceNotFoundException;
 import co.edu.sena.ga_ms_restaurante.mesa.enums.EstadoMesa;
 import co.edu.sena.ga_ms_restaurante.mesa.model.Mesa;
 import co.edu.sena.ga_ms_restaurante.mesa.repository.MesaRepository;
-import co.edu.sena.ga_ms_restaurante.pedido.dto.request.DetallePedidoRequest;
 import co.edu.sena.ga_ms_restaurante.pedido.dto.request.PedidoCreateRequest;
 import co.edu.sena.ga_ms_restaurante.pedido.dto.response.PedidoResumenResponse;
 import co.edu.sena.ga_ms_restaurante.pedido.dto.response.PedidoResponse;
@@ -17,6 +18,7 @@ import co.edu.sena.ga_ms_restaurante.pedido.enums.EstadoPedido;
 import co.edu.sena.ga_ms_restaurante.pedido.mapper.PedidoMapper;
 import co.edu.sena.ga_ms_restaurante.pedido.model.DetallePedido;
 import co.edu.sena.ga_ms_restaurante.pedido.model.Pedido;
+import co.edu.sena.ga_ms_restaurante.pedido.repository.DetallePedidoRepository;
 import co.edu.sena.ga_ms_restaurante.pedido.repository.PedidoRepository;
 import co.edu.sena.ga_ms_restaurante.security.UserContextHolder;
 import lombok.RequiredArgsConstructor;
@@ -34,11 +36,13 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class PedidoServiceImpl implements PedidoService {
 
-    private final PedidoRepository pedidoRepository;
-    private final MesaRepository mesaRepository;
-    private final PedidoMapper pedidoMapper;
-    private final PedidoCocinaPublisher cocinaPublisher;
-    private final PedidoBarPublisher barPublisher;
+    private final PedidoRepository        pedidoRepository;
+    private final MesaRepository          mesaRepository;
+    private final PedidoMapper            pedidoMapper;
+    private final PedidoCocinaPublisher   cocinaPublisher;
+    private final PedidoBarPublisher      barPublisher;
+    private final DetallePedidoRepository detallePedidoRepository;
+    private final CancelacionPublisher    cancelacionPublisher;
 
     // ─── CREAR ───────────────────────────────────────────────────────────────
 
@@ -46,17 +50,16 @@ public class PedidoServiceImpl implements PedidoService {
     @Transactional
     public PedidoResponse crear(PedidoCreateRequest request) {
 
-        // 1. Verificar que la mesa existe y está LIBRE
         Mesa mesa = mesaRepository.findById(request.getMesaId())
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Mesa no encontrada con id: " + request.getMesaId()));
 
         if (mesa.getEstado() != EstadoMesa.LIBRE) {
             throw new BusinessRuleException(
-                    "La mesa '" + mesa.getNombre() + "' no está disponible. Estado actual: " + mesa.getEstado());
+                    "La mesa '" + mesa.getNombre() + "' no está disponible. Estado actual: "
+                            + mesa.getEstado());
         }
 
-        // 2. Construir el pedido
         Pedido pedido = new Pedido();
         pedido.setMesa(mesa);
         pedido.setMeseroId(UserContextHolder.getCurrentUserId());
@@ -64,7 +67,6 @@ public class PedidoServiceImpl implements PedidoService {
         pedido.setNotas(request.getNotas());
         pedido.setEstado(EstadoPedido.BORRADOR);
 
-        // 3. Construir detalles y calcular subtotales
         List<DetallePedido> detalles = request.getDetalles().stream()
                 .map(req -> {
                     DetallePedido d = pedidoMapper.toDetalleEntity(req);
@@ -75,7 +77,6 @@ public class PedidoServiceImpl implements PedidoService {
         pedido.setDetalles(detalles);
         pedido.setSubtotal(calcularSubtotal(detalles));
 
-        // 4. Cambiar estado de mesa a OCUPADA
         mesa.setEstado(EstadoMesa.OCUPADA);
         mesaRepository.save(mesa);
 
@@ -95,13 +96,13 @@ public class PedidoServiceImpl implements PedidoService {
 
         if (pedido.getEstado() != EstadoPedido.BORRADOR) {
             throw new BusinessRuleException(
-                    "Solo se pueden confirmar pedidos en estado BORRADOR. Estado actual: " + pedido.getEstado());
+                    "Solo se pueden confirmar pedidos en estado BORRADOR. Estado actual: "
+                            + pedido.getEstado());
         }
 
         validarPropietarioOInstructor(pedido);
 
         // Separar ítems por categoría directamente desde las entidades DetallePedido
-        // (se elimina la conversión intermedia a DetallePedidoRequest)
         List<PedidoCocinaEvent.Item> itemsCocina = pedido.getDetalles().stream()
                 .filter(d -> "COMIDA".equalsIgnoreCase(d.getCategoria()))
                 .map(d -> new PedidoCocinaEvent.Item(
@@ -122,8 +123,7 @@ public class PedidoServiceImpl implements PedidoService {
                         d.getObservaciones()))
                 .toList();
 
-        // El adapter construye el ComandaRequestDTO completo con todos los campos
-        // que Cocina y Bar esperan. El log queda dentro de cada publisher.
+        // El adapter construye el ComandaRequestDTO completo — logs dentro de cada publisher
         if (!itemsCocina.isEmpty()) {
             cocinaPublisher.publicar(pedido, itemsCocina);
         }
@@ -146,27 +146,28 @@ public class PedidoServiceImpl implements PedidoService {
 
         if (pedido.getEstado() != EstadoPedido.LISTO_PARA_SERVIR) {
             throw new BusinessRuleException(
-                    "Solo se pueden entregar pedidos en estado LISTO_PARA_SERVIR. Estado actual: " + pedido.getEstado());
+                    "Solo se pueden entregar pedidos en estado LISTO_PARA_SERVIR. Estado actual: "
+                            + pedido.getEstado());
         }
 
         validarPropietarioOInstructor(pedido);
 
         pedido.setEstado(EstadoPedido.ENTREGADO);
 
-        // Mesa pasa a POR_PAGAR
         Mesa mesa = pedido.getMesa();
         mesa.setEstado(EstadoMesa.POR_PAGAR);
         mesaRepository.save(mesa);
 
-        log.info("Pedido {} marcado como ENTREGADO — mesa {} pasa a POR_PAGAR", pedidoId, mesa.getNombre());
+        log.info("Pedido {} marcado como ENTREGADO — mesa {} pasa a POR_PAGAR",
+                pedidoId, mesa.getNombre());
         return pedidoMapper.toResponse(pedidoRepository.save(pedido));
     }
 
-    // ─── CANCELAR ─────────────────────────────────────────────────────────────
+    // ─── CANCELAR (global) ────────────────────────────────────────────────────
 
     @Override
     @Transactional
-    public PedidoResponse cancelar(UUID pedidoId) {
+    public PedidoResponse cancelar(UUID pedidoId, String motivo) {
 
         Pedido pedido = obtenerPedidoOFalla(pedidoId);
 
@@ -181,15 +182,123 @@ public class PedidoServiceImpl implements PedidoService {
         pedido.setEstado(EstadoPedido.CANCELADO);
         pedido.setFechaCierre(LocalDateTime.now());
 
-        // Liberar la mesa si el pedido estaba activo
         if (estadoActual != EstadoPedido.BORRADOR) {
             Mesa mesa = pedido.getMesa();
             mesa.setEstado(EstadoMesa.LIBRE);
             mesaRepository.save(mesa);
             log.info("Mesa {} liberada por cancelación del pedido {}", mesa.getNombre(), pedidoId);
+
+            // Notificar a Cocina y Bar solo si el pedido ya había sido enviado
+            cancelacionPublisher.publicar(
+                    new CancelacionEvent(pedido.getId(), null, false, motivo));
         }
 
         return pedidoMapper.toResponse(pedidoRepository.save(pedido));
+    }
+
+    // ─── DEVOLVER (global) ────────────────────────────────────────────────────
+
+    @Override
+    @Transactional
+    public PedidoResponse devolverGlobal(UUID pedidoId, String motivo) {
+
+        Pedido pedido = obtenerPedidoOFalla(pedidoId);
+
+        EstadoPedido estadoActual = pedido.getEstado();
+        if (estadoActual == EstadoPedido.FACTURADO
+                || estadoActual == EstadoPedido.CANCELADO
+                || estadoActual == EstadoPedido.BORRADOR) {
+            throw new BusinessRuleException(
+                    "No se puede devolver un pedido en estado: " + estadoActual);
+        }
+
+        validarPropietarioOInstructor(pedido);
+
+        pedido.setEstado(EstadoPedido.CANCELADO);
+        pedido.setFechaCierre(LocalDateTime.now());
+
+        Mesa mesa = pedido.getMesa();
+        mesa.setEstado(EstadoMesa.LIBRE);
+        mesaRepository.save(mesa);
+
+        cancelacionPublisher.publicar(
+                new CancelacionEvent(pedido.getId(), null, true, motivo));
+
+        log.info("Pedido {} devuelto (global) — mesa {} liberada", pedidoId, mesa.getNombre());
+        return pedidoMapper.toResponse(pedidoRepository.save(pedido));
+    }
+
+    // ─── CANCELAR ÍTEM ────────────────────────────────────────────────────────
+
+    @Override
+    @Transactional
+    public PedidoResponse cancelarDetalle(UUID detalleId, String motivo) {
+
+        DetallePedido detalle = obtenerDetalleOFalla(detalleId);
+        Pedido pedido = detalle.getPedido();
+
+        EstadoPedido estadoActual = pedido.getEstado();
+        if (estadoActual == EstadoPedido.FACTURADO
+                || estadoActual == EstadoPedido.CANCELADO
+                || estadoActual == EstadoPedido.BORRADOR) {
+            throw new BusinessRuleException(
+                    "No se puede cancelar un ítem de un pedido en estado: " + estadoActual);
+        }
+
+        validarPropietarioOInstructor(pedido);
+
+        detalle.setEstadoDetalle("CANCELADO");
+        detallePedidoRepository.save(detalle);
+
+        cancelacionPublisher.publicar(
+                new CancelacionEvent(pedido.getId(), detalleId, false, motivo));
+
+        log.info("Ítem {} cancelado del pedido {}", detalleId, pedido.getId());
+
+        // Si todos los ítems quedaron cancelados → cerrar el pedido completo
+        boolean todosCancelados = detallePedidoRepository
+                .findByPedido_Id(pedido.getId())
+                .stream()
+                .allMatch(d -> "CANCELADO".equals(d.getEstadoDetalle()));
+
+        if (todosCancelados) {
+            pedido.setEstado(EstadoPedido.CANCELADO);
+            pedido.setFechaCierre(LocalDateTime.now());
+            pedido.getMesa().setEstado(EstadoMesa.LIBRE);
+            mesaRepository.save(pedido.getMesa());
+            pedidoRepository.save(pedido);
+            log.info("Todos los ítems cancelados — pedido {} cerrado automáticamente",
+                    pedido.getId());
+        }
+
+        return pedidoMapper.toResponse(obtenerPedidoOFalla(pedido.getId()));
+    }
+
+    // ─── DEVOLVER ÍTEM ────────────────────────────────────────────────────────
+
+    @Override
+    @Transactional
+    public PedidoResponse devolverDetalle(UUID detalleId, String motivo) {
+
+        DetallePedido detalle = obtenerDetalleOFalla(detalleId);
+        Pedido pedido = detalle.getPedido();
+
+        if (pedido.getEstado() == EstadoPedido.FACTURADO
+                || pedido.getEstado() == EstadoPedido.CANCELADO) {
+            throw new BusinessRuleException(
+                    "No se puede devolver un ítem de un pedido en estado: " + pedido.getEstado());
+        }
+
+        validarPropietarioOInstructor(pedido);
+
+        detalle.setEstadoDetalle("DEVUELTO");
+        detallePedidoRepository.save(detalle);
+
+        cancelacionPublisher.publicar(
+                new CancelacionEvent(pedido.getId(), detalleId, true, motivo));
+
+        log.info("Ítem {} devuelto del pedido {}", detalleId, pedido.getId());
+        return pedidoMapper.toResponse(obtenerPedidoOFalla(pedido.getId()));
     }
 
     // ─── CONSULTAS ────────────────────────────────────────────────────────────
@@ -236,11 +345,10 @@ public class PedidoServiceImpl implements PedidoService {
 
         EstadoPedido estadoActual = pedido.getEstado();
 
-        // Solo aceptamos transiciones válidas desde eventos externos
         boolean transicionValida = switch (nuevoEstado) {
-            case EN_PREPARACION   -> estadoActual == EstadoPedido.ENVIADO_COCINA;
+            case EN_PREPARACION    -> estadoActual == EstadoPedido.ENVIADO_COCINA;
             case LISTO_PARA_SERVIR -> estadoActual == EstadoPedido.EN_PREPARACION;
-            case CANCELADO        -> estadoActual != EstadoPedido.FACTURADO
+            case CANCELADO         -> estadoActual != EstadoPedido.FACTURADO
                     && estadoActual != EstadoPedido.CANCELADO;
             default -> false;
         };
@@ -264,12 +372,18 @@ public class PedidoServiceImpl implements PedidoService {
         log.info("Pedido {} actualizado a {} por evento RabbitMQ", pedidoId, nuevoEstado);
     }
 
-    // ─── HELPERS PRIVADOS ──────────────────────────────────────────────────────
+    // ─── HELPERS PRIVADOS ─────────────────────────────────────────────────────
 
     private Pedido obtenerPedidoOFalla(UUID id) {
         return pedidoRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Pedido no encontrado con id: " + id));
+    }
+
+    private DetallePedido obtenerDetalleOFalla(UUID id) {
+        return detallePedidoRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Ítem de pedido no encontrado con id: " + id));
     }
 
     private BigDecimal calcularSubtotal(List<DetallePedido> detalles) {
@@ -280,7 +394,7 @@ public class PedidoServiceImpl implements PedidoService {
 
     private void validarPropietarioOInstructor(Pedido pedido) {
         UUID currentUserId = UserContextHolder.getCurrentUserId();
-        String currentRole  = UserContextHolder.getCurrentUserRole();
+        String currentRole = UserContextHolder.getCurrentUserRole();
 
         boolean esPropietario = pedido.getMeseroId().equals(currentUserId);
         boolean esInstructor  = "INSTRUCTOR".equalsIgnoreCase(currentRole)
