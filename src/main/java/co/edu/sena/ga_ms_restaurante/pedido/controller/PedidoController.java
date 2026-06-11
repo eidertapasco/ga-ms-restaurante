@@ -6,6 +6,8 @@ import co.edu.sena.ga_ms_restaurante.pedido.dto.response.PedidoResponse;
 import co.edu.sena.ga_ms_restaurante.pedido.enums.EstadoPedido;
 import co.edu.sena.ga_ms_restaurante.pedido.service.PedidoService;
 import co.edu.sena.ga_ms_restaurante.security.UserContextHolder;
+import co.edu.sena.security.annotacion.RequireRole;
+import co.edu.sena.security.enums.RolEnum;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -18,6 +20,7 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/pedidos")
 @RequiredArgsConstructor
+@RequireRole({RolEnum.MESERO, RolEnum.INSTRUCTOR, RolEnum.ADMINISTRADOR})
 public class PedidoController {
 
     private final PedidoService pedidoService;
