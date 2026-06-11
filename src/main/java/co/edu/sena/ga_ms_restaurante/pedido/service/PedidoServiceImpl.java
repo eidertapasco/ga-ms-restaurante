@@ -122,27 +122,14 @@ public class PedidoServiceImpl implements PedidoService {
                         d.getObservaciones()))
                 .toList();
 
-        // Publicar eventos solo si hay ítems de esa categoría
+        // El adapter construye el ComandaRequestDTO completo con todos los campos
+        // que Cocina y Bar esperan. El log queda dentro de cada publisher.
         if (!itemsCocina.isEmpty()) {
-            PedidoCocinaEvent eventosCocina = new PedidoCocinaEvent(
-                    pedido.getId(),
-                    pedido.getMesa().getNombre(),
-                    pedido.getNotas(),
-                    itemsCocina
-            );
-            cocinaPublisher.publicar(eventosCocina);
-            log.info("Evento enviado a Cocina — pedido: {}", pedidoId);
+            cocinaPublisher.publicar(pedido, itemsCocina);
         }
 
         if (!itemsBar.isEmpty()) {
-            PedidoBarEvent eventosBar = new PedidoBarEvent(
-                    pedido.getId(),
-                    pedido.getMesa().getNombre(),
-                    pedido.getNotas(),
-                    itemsBar
-            );
-            barPublisher.publicar(eventosBar);
-            log.info("Evento enviado a Bar — pedido: {}", pedidoId);
+            barPublisher.publicar(pedido, itemsBar);
         }
 
         pedido.setEstado(EstadoPedido.ENVIADO_COCINA);
