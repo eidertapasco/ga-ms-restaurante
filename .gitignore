@@ -31,3 +31,6 @@ build/
 
 ### VS Code ###
 .vscode/
+
+#el application-local.properties es solo para que Tapasco Chambee bien con su Docker
+application-local.properties
