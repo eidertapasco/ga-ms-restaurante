@@ -58,10 +58,11 @@
         </dependency>
 
         <!-- Spring Security -->
-        <dependency>
+
+        <!--<dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-security</artifactId>
-        </dependency>
+        </dependency>-->
 
         <!-- MySQL -->
         <dependency>
@@ -111,6 +112,12 @@
             <artifactId>ga-lib-common</artifactId>
             <version>0.0.1-SNAPSHOT</version>
         </dependency> -->
+
+        <dependency>
+            <groupId>co.edu.sena</groupId>
+            <artifactId>ga-lib-security</artifactId>
+            <version>0.0.1-SNAPSHOT</version>
+        </dependency>
 
     </dependencies>
 

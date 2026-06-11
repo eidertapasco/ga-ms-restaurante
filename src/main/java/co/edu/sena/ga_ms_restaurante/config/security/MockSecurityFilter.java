@@ -1,4 +1,4 @@
-package co.edu.sena.ga_ms_restaurante.config.security;
+/*package co.edu.sena.ga_ms_restaurante.config.security;
 
 import co.edu.sena.ga_ms_restaurante.security.UserContext;
 import co.edu.sena.ga_ms_restaurante.security.UserContextHolder;
@@ -61,3 +61,4 @@ public class MockSecurityFilter extends OncePerRequestFilter {
         }
     }
 }
+*/
