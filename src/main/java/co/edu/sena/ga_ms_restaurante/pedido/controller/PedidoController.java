@@ -75,7 +75,33 @@ public class PedidoController {
 
     // PATCH /api/pedidos/{id}/cancelar
     @PatchMapping("/{id}/cancelar")
-    public ResponseEntity<PedidoResponse> cancelar(@PathVariable UUID id) {
-        return ResponseEntity.ok(pedidoService.cancelar(id));
+    public ResponseEntity<PedidoResponse> cancelar(
+            @PathVariable UUID id,
+            @RequestParam(required = false) String motivo) {
+        return ResponseEntity.ok(pedidoService.cancelar(id, motivo));
+    }
+
+    // PATCH /api/pedidos/{id}/devolver?motivo=...
+    @PatchMapping("/{id}/devolver")
+    public ResponseEntity<PedidoResponse> devolverGlobal(
+            @PathVariable UUID id,
+            @RequestParam(required = false) String motivo) {
+        return ResponseEntity.ok(pedidoService.devolverGlobal(id, motivo));
+    }
+
+    // PATCH /api/pedidos/detalle/{idDetalle}/cancelar?motivo=...
+    @PatchMapping("/detalle/{idDetalle}/cancelar")
+    public ResponseEntity<PedidoResponse> cancelarDetalle(
+            @PathVariable UUID idDetalle,
+            @RequestParam(required = false) String motivo) {
+        return ResponseEntity.ok(pedidoService.cancelarDetalle(idDetalle, motivo));
+    }
+
+    // PATCH /api/pedidos/detalle/{idDetalle}/devolver?motivo=...
+    @PatchMapping("/detalle/{idDetalle}/devolver")
+    public ResponseEntity<PedidoResponse> devolverDetalle(
+            @PathVariable UUID idDetalle,
+            @RequestParam(required = false) String motivo) {
+        return ResponseEntity.ok(pedidoService.devolverDetalle(idDetalle, motivo));
     }
 }

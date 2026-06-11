@@ -21,6 +21,7 @@ public class PedidoCocinaEvent {
     @AllArgsConstructor
     @NoArgsConstructor
     public static class Item {
+        private String idDetallePedido;  // NUEVO — UUID del DetallePedido en texto
         private String idProducto;
         private String nombreProducto;
         private int cantidad;
