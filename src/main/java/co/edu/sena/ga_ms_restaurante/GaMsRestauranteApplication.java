@@ -4,8 +4,8 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 @SpringBootApplication(scanBasePackages = {
-		"co.edu.sena.ga_ms_restaurante", // Tu paquete principal
-		"co.edu.sena.security"           // El paquete de la librería de seguridad
+		"co.edu.sena.ga_ms_restaurante",
+		"co.edu.sena.security"
 })
 public class GaMsRestauranteApplication {
 
