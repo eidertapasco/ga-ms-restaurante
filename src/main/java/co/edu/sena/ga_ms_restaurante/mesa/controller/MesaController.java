@@ -24,25 +24,25 @@ public class MesaController {
     private final MesaService mesaService;
 
     @GetMapping
-    @RequireRole({RolEnum.MESERO, RolEnum.CAJERO, RolEnum.INSTRUCTOR, RolEnum.ADMINISTRADOR})
+    @RequireRole({RolEnum.MESERO, RolEnum.INSTRUCTOR, RolEnum.ADMINISTRADOR})
     public ResponseEntity<List<MesaResponse>> listarActivas() {
         return ResponseEntity.ok(mesaService.listarMesasActivas());
     }
 
     @GetMapping("/inactivas")
-    @RequireRole({RolEnum.MESERO, RolEnum.CAJERO, RolEnum.INSTRUCTOR, RolEnum.ADMINISTRADOR})
+    @RequireRole({RolEnum.MESERO, RolEnum.INSTRUCTOR, RolEnum.ADMINISTRADOR})
     public ResponseEntity<List<MesaResponse>> listarInactivas() {
         return ResponseEntity.ok(mesaService.listarMesasInactivas());
     }
 
     @GetMapping("/estado/{estado}")
-    @RequireRole({RolEnum.MESERO, RolEnum.CAJERO, RolEnum.INSTRUCTOR, RolEnum.ADMINISTRADOR})
+    @RequireRole({RolEnum.MESERO, RolEnum.INSTRUCTOR, RolEnum.ADMINISTRADOR})
     public ResponseEntity<List<MesaResponse>> listarPorEstado(@PathVariable EstadoMesa estado) {
         return ResponseEntity.ok(mesaService.listarMesasPorEstado(estado));
     }
 
     @GetMapping("/{id}")
-    @RequireRole({RolEnum.MESERO, RolEnum.CAJERO, RolEnum.INSTRUCTOR, RolEnum.ADMINISTRADOR})
+    @RequireRole({RolEnum.MESERO, RolEnum.INSTRUCTOR, RolEnum.ADMINISTRADOR})
     public ResponseEntity<MesaResponse> buscarPorId(@PathVariable UUID id) {
         return ResponseEntity.ok(mesaService.buscarPorId(id));
     }

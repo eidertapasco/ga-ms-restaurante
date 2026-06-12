@@ -6,6 +6,8 @@ import co.edu.sena.ga_ms_restaurante.pedido.dto.response.PedidoResponse;
 import co.edu.sena.ga_ms_restaurante.pedido.enums.EstadoPedido;
 import co.edu.sena.ga_ms_restaurante.pedido.service.PedidoService;
 import co.edu.sena.ga_ms_restaurante.security.UserContextHolder;
+import co.edu.sena.security.annotacion.RequireRole;
+import co.edu.sena.security.enums.RolEnum;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -18,6 +20,7 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/pedidos")
 @RequiredArgsConstructor
+@RequireRole({RolEnum.MESERO, RolEnum.INSTRUCTOR, RolEnum.ADMINISTRADOR})
 public class PedidoController {
 
     private final PedidoService pedidoService;
@@ -75,7 +78,33 @@ public class PedidoController {
 
     // PATCH /api/pedidos/{id}/cancelar
     @PatchMapping("/{id}/cancelar")
-    public ResponseEntity<PedidoResponse> cancelar(@PathVariable UUID id) {
-        return ResponseEntity.ok(pedidoService.cancelar(id));
+    public ResponseEntity<PedidoResponse> cancelar(
+            @PathVariable UUID id,
+            @RequestParam(required = false) String motivo) {
+        return ResponseEntity.ok(pedidoService.cancelar(id, motivo));
+    }
+
+    // PATCH /api/pedidos/{id}/devolver?motivo=...
+    @PatchMapping("/{id}/devolver")
+    public ResponseEntity<PedidoResponse> devolverGlobal(
+            @PathVariable UUID id,
+            @RequestParam(required = false) String motivo) {
+        return ResponseEntity.ok(pedidoService.devolverGlobal(id, motivo));
+    }
+
+    // PATCH /api/pedidos/detalle/{idDetalle}/cancelar?motivo=...
+    @PatchMapping("/detalle/{idDetalle}/cancelar")
+    public ResponseEntity<PedidoResponse> cancelarDetalle(
+            @PathVariable UUID idDetalle,
+            @RequestParam(required = false) String motivo) {
+        return ResponseEntity.ok(pedidoService.cancelarDetalle(idDetalle, motivo));
+    }
+
+    // PATCH /api/pedidos/detalle/{idDetalle}/devolver?motivo=...
+    @PatchMapping("/detalle/{idDetalle}/devolver")
+    public ResponseEntity<PedidoResponse> devolverDetalle(
+            @PathVariable UUID idDetalle,
+            @RequestParam(required = false) String motivo) {
+        return ResponseEntity.ok(pedidoService.devolverDetalle(idDetalle, motivo));
     }
 }

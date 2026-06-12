@@ -11,24 +11,32 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class RabbitMQConfig {
 
-    // ── Nombres ──────────────────────────────────────────────────────────────
+    // ── Nombres ───────────────────────────────────────────────────────────────
     public static final String EXCHANGE = "gastrosena.pedidos";
 
-    public static final String QUEUE_COCINA           = "restaurante.pedido.cocina";
-    public static final String QUEUE_BAR              = "restaurante.pedido.bar";
-    public static final String QUEUE_ESTADO_PEDIDO    = "restaurante.pedido.estado";
+    // Colas existentes
+    public static final String QUEUE_COCINA        = "restaurante.pedido.cocina";
+    public static final String QUEUE_BAR           = "restaurante.pedido.bar";
+    public static final String QUEUE_ESTADO_PEDIDO = "restaurante.pedido.estado";
 
-    public static final String RK_COCINA              = "pedido.cocina";
-    public static final String RK_BAR                 = "pedido.bar";
-    public static final String RK_ESTADO_ACTUALIZADO  = "pedido.estado.actualizado";
+    // Cola nueva — estado individual por plato/bebida
+    public static final String QUEUE_PLATO_ESTADO  = "restaurante.plato.estado";
 
-    // ── Exchange ─────────────────────────────────────────────────────────────
+    // Routing keys existentes
+    public static final String RK_COCINA             = "pedido.cocina";
+    public static final String RK_BAR                = "pedido.bar";
+    public static final String RK_ESTADO_ACTUALIZADO = "pedido.estado.actualizado";
+
+    // Routing key nueva — notificaciones por plato/bebida
+    public static final String RK_PLATO_ESTADO       = "pedido.plato.estado";
+
+    // ── Exchange ──────────────────────────────────────────────────────────────
     @Bean
     public TopicExchange gastroSenaExchange() {
         return new TopicExchange(EXCHANGE, true, false);
     }
 
-    // ── Queues ───────────────────────────────────────────────────────────────
+    // ── Queues ────────────────────────────────────────────────────────────────
     @Bean
     public Queue queueCocina() {
         return QueueBuilder.durable(QUEUE_COCINA).build();
@@ -44,7 +52,12 @@ public class RabbitMQConfig {
         return QueueBuilder.durable(QUEUE_ESTADO_PEDIDO).build();
     }
 
-    // ── Bindings ─────────────────────────────────────────────────────────────
+    @Bean
+    public Queue queuePlatoEstado() {
+        return QueueBuilder.durable(QUEUE_PLATO_ESTADO).build();
+    }
+
+    // ── Bindings ──────────────────────────────────────────────────────────────
     @Bean
     public Binding bindingCocina() {
         return BindingBuilder.bind(queueCocina())
@@ -66,7 +79,14 @@ public class RabbitMQConfig {
                 .with(RK_ESTADO_ACTUALIZADO);
     }
 
-    // ── Serialización JSON ───────────────────────────────────────────────────
+    @Bean
+    public Binding bindingPlatoEstado() {
+        return BindingBuilder.bind(queuePlatoEstado())
+                .to(gastroSenaExchange())
+                .with(RK_PLATO_ESTADO);
+    }
+
+    // ── Serialización JSON ────────────────────────────────────────────────────
     @Bean
     public MessageConverter jsonMessageConverter() {
         return new Jackson2JsonMessageConverter();

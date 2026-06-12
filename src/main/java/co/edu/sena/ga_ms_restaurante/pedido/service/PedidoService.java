@@ -16,7 +16,17 @@ public interface PedidoService {
 
     PedidoResponse marcarEntregado(UUID pedidoId);
 
-    PedidoResponse cancelar(UUID pedidoId);
+    /** Cancela todo el pedido. Notifica a Cocina/Bar si ya había sido enviado. */
+    PedidoResponse cancelar(UUID pedidoId, String motivo);
+
+    /** Devuelve todo el pedido (ya fue preparado). Notifica a Cocina/Bar. */
+    PedidoResponse devolverGlobal(UUID pedidoId, String motivo);
+
+    /** Cancela un ítem puntual (aún no estaba listo). Notifica a Cocina/Bar. */
+    PedidoResponse cancelarDetalle(UUID detalleId, String motivo);
+
+    /** Devuelve un ítem puntual (ya estaba listo). Notifica a Cocina/Bar. */
+    PedidoResponse devolverDetalle(UUID detalleId, String motivo);
 
     PedidoResponse buscarPorId(UUID id);
 
@@ -28,6 +38,6 @@ public interface PedidoService {
 
     List<PedidoResumenResponse> listarPorMesa(UUID mesaId);
 
-    // Llamado por EstadoPedidoListener cuando Cocina/Bar actualizan el estado
+    /** Llamado por EstadoPedidoListener cuando Cocina/Bar actualizan el estado. */
     void actualizarEstadoDesdeEvento(UUID pedidoId, EstadoPedido nuevoEstado);
 }
