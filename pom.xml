@@ -113,10 +113,21 @@
             <version>0.0.1-SNAPSHOT</version>
         </dependency> -->
 
+        <!-- ga-lib-ecurity-->
+
         <dependency>
             <groupId>co.edu.sena</groupId>
             <artifactId>ga-lib-security</artifactId>
             <version>0.0.1-SNAPSHOT</version>
+            <scope>system</scope>
+            <systemPath>${project.basedir}/libs/ga-lib-security-0.0.1-SNAPSHOT.jar</systemPath>
+        </dependency>
+
+
+        <!-- Dependencia de actuator -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
 
     </dependencies>
@@ -155,6 +166,7 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <configuration>
+                    <includeSystemScope>true</includeSystemScope>
                     <excludes>
                         <exclude>
                             <groupId>org.projectlombok</groupId>
