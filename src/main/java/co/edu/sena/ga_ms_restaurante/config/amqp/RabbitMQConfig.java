@@ -1,5 +1,6 @@
 package co.edu.sena.ga_ms_restaurante.config.amqp;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.amqp.core.*;
 import org.springframework.amqp.rabbit.connection.ConnectionFactory;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
@@ -14,20 +15,14 @@ public class RabbitMQConfig {
     // ── Nombres ───────────────────────────────────────────────────────────────
     public static final String EXCHANGE = "gastrosena.pedidos";
 
-    // Colas existentes
     public static final String QUEUE_COCINA        = "restaurante.pedido.cocina";
     public static final String QUEUE_BAR           = "restaurante.pedido.bar";
     public static final String QUEUE_ESTADO_PEDIDO = "restaurante.pedido.estado";
-
-    // Cola nueva — estado individual por plato/bebida
     public static final String QUEUE_PLATO_ESTADO  = "restaurante.plato.estado";
 
-    // Routing keys existentes
     public static final String RK_COCINA             = "pedido.cocina";
     public static final String RK_BAR                = "pedido.bar";
     public static final String RK_ESTADO_ACTUALIZADO = "pedido.estado.actualizado";
-
-    // Routing key nueva — notificaciones por plato/bebida
     public static final String RK_PLATO_ESTADO       = "pedido.plato.estado";
 
     // ── Exchange ──────────────────────────────────────────────────────────────
@@ -88,14 +83,15 @@ public class RabbitMQConfig {
 
     // ── Serialización JSON ────────────────────────────────────────────────────
     @Bean
-    public MessageConverter jsonMessageConverter() {
-        return new Jackson2JsonMessageConverter();
+    public MessageConverter jsonMessageConverter(ObjectMapper objectMapper) {
+        return new Jackson2JsonMessageConverter(objectMapper);
     }
 
     @Bean
-    public RabbitTemplate rabbitTemplate(ConnectionFactory connectionFactory) {
+    public RabbitTemplate rabbitTemplate(ConnectionFactory connectionFactory,
+                                         MessageConverter jsonMessageConverter) {
         RabbitTemplate template = new RabbitTemplate(connectionFactory);
-        template.setMessageConverter(jsonMessageConverter());
+        template.setMessageConverter(jsonMessageConverter);
         return template;
     }
 }

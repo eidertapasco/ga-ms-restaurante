@@ -30,11 +30,11 @@ GastroSENA digitaliza la operación de un restaurante de formación. Este micros
 | Módulo | Responsabilidad |
 |---|---|
 | **Mesas** | CRUD de mesas, estados (Libre / Ocupada / Por Pagar / Inactiva), zonas |
-| **Pedidos** | Creación, confirmación y ciclo de vida de comandas |
+| **Pedidos** | Creación, confirmación, ciclo de vida, cancelaciones y devoluciones de comandas |
 | **Caja** | Sesiones de turno, facturación, métodos de pago, generación de PDF |
 | **Reportes** | Resumen de ventas por sesión, pedidos por mesa |
 
-El servicio se comunica con los microservicios de **Cocina** y **Bar** de forma asíncrona mediante **RabbitMQ**. Cuando un pedido se confirma, el sistema separa automáticamente los ítems por categoría (COMIDA → Cocina, BEBIDA → Bar) y publica eventos independientes. Las respuestas de estado regresan por el mismo bus de mensajería.
+El servicio se comunica con los microservicios de **Cocina** y **Bar** de forma asíncrona mediante **RabbitMQ**. Cuando un pedido se confirma, el sistema separa automáticamente los ítems por categoría (COMIDA → Cocina, BEBIDA → Bar) y publica el evento `ComandaRequestDTO` con toda la información necesaria. Las respuestas de estado regresan por el mismo bus de mensajería.
 
 ---
 
@@ -243,7 +243,7 @@ LIBRE ──────► OCUPADA ──────► POR_PAGAR ────
 
 ### 📋 Pedidos (`/api/pedidos`)
 
-Ciclo de vida completo de una comanda.
+Ciclo de vida completo de una comanda, incluyendo cancelaciones y devoluciones con notificación a Cocina/Bar.
 
 | Método | Ruta | Descripción |
 |---|---|---|
@@ -253,9 +253,14 @@ Ciclo de vida completo de una comanda.
 | `GET` | `/api/pedidos/mis-pedidos` | Listar pedidos del mesero autenticado |
 | `GET` | `/api/pedidos/estado/{estado}` | Filtrar por estado |
 | `GET` | `/api/pedidos/mesa/{mesaId}` | Pedidos de una mesa específica |
-| `PATCH` | `/api/pedidos/{id}/confirmar` | BORRADOR → ENVIADO_COCINA + publica eventos RabbitMQ |
+| `PATCH` | `/api/pedidos/{id}/confirmar` | BORRADOR → ENVIADO_COCINA + publica `ComandaRequestDTO` a Cocina/Bar |
 | `PATCH` | `/api/pedidos/{id}/entregar` | LISTO_PARA_SERVIR → ENTREGADO (mesa pasa a POR_PAGAR) |
-| `PATCH` | `/api/pedidos/{id}/cancelar` | Cancelar pedido y liberar mesa |
+| `PATCH` | `/api/pedidos/{id}/cancelar?motivo=...` | Cancela todo el pedido y notifica a Cocina/Bar |
+| `PATCH` | `/api/pedidos/{id}/devolver?motivo=...` | Devuelve todo el pedido (ya fue preparado) y notifica a Cocina/Bar |
+| `PATCH` | `/api/pedidos/detalle/{idDetalle}/cancelar?motivo=...` | Cancela un ítem específico (aún no listo) y notifica a Cocina/Bar |
+| `PATCH` | `/api/pedidos/detalle/{idDetalle}/devolver?motivo=...` | Devuelve un ítem específico (ya preparado) y notifica a Cocina/Bar |
+
+> El parámetro `motivo` es opcional en todos los endpoints de cancelación/devolución.
 
 **Ciclo de estados del pedido:**
 
@@ -267,11 +272,20 @@ BORRADOR ──► ENVIADO_COCINA ──► EN_PREPARACION ──► LISTO_PARA_
 
 > Los estados `EN_PREPARACION` y `LISTO_PARA_SERVIR` son actualizados por los microservicios de Cocina/Bar mediante eventos RabbitMQ — no por el frontend de restaurante.
 
+**Reglas de cancelación y devolución:**
+
+| Operación | Estado válido del pedido | Notifica a Cocina/Bar |
+|---|---|---|
+| `cancelar` (global) | Cualquiera excepto FACTURADO o CANCELADO | Sí, si ya fue enviado |
+| `devolver` (global) | Cualquiera excepto BORRADOR, FACTURADO o CANCELADO | Sí |
+| `cancelarDetalle` | ENVIADO_COCINA o EN_PREPARACION | Sí |
+| `devolverDetalle` | Cualquiera excepto FACTURADO o CANCELADO | Sí |
+
 **Estructura de un ítem de pedido (`DetallePedidoRequest`):**
 
 ```json
 {
-  "productoId": "uuid-o-string-del-catalogo",
+  "productoId": "uuid-de-la-receta-en-catalogo",
   "nombreProducto": "Bandeja Paisa",
   "cantidad": 2,
   "precioUnitario": 25000.00,
@@ -356,63 +370,85 @@ El sistema usa un **Topic Exchange** llamado `gastrosena.pedidos`.
 ### Topología
 
 ```
-                    ┌─────────────────────────────────┐
-                    │  Exchange: gastrosena.pedidos    │
-                    │  (Topic Exchange, durable)       │
-                    └──────────────┬──────────────────┘
-                                   │
-          ┌────────────────────────┼────────────────────────┐
-          │                        │                        │
-   pedido.cocina            pedido.bar          pedido.estado.actualizado
-          │                        │                        │
-          ▼                        ▼                        ▼
- restaurante.pedido.cocina  restaurante.pedido.bar  restaurante.pedido.estado
-   (consume: Cocina)          (consume: Bar)          (consume: Restaurante ←)
+                         ┌─────────────────────────────────┐
+                         │  Exchange: gastrosena.pedidos    │
+                         │  (Topic Exchange, durable)       │
+                         └──────────┬──────────────────────┘
+                                    │
+       ┌──────────────┬─────────────┼─────────────┬──────────────────────┐
+       │              │             │             │                      │
+ pedido.cocina   pedido.bar  pedido.estado   pedido.plato.estado  pedido.cancelacion
+       │              │       .actualizado         │                      │
+       ▼              ▼             │               ▼                     │
+restaurante    restaurante    restaurante     restaurante          restaurante
+.pedido.cocina .pedido.bar   .pedido.estado  .plato.estado        .pedido.cancelacion
+(consume:      (consume:     (consume:       (consume:            (consume:
+ Cocina)        Bar)          Restaurante ←)  Restaurante ←)       Cocina + Bar ←)
 ```
 
 ### Eventos publicados por este microservicio
 
 | Routing Key | Queue destino | Cuándo se publica | Payload |
 |---|---|---|---|
-| `pedido.cocina` | `restaurante.pedido.cocina` | Al confirmar pedido (si hay ítems COMIDA) | `PedidoCocinaEvent` |
-| `pedido.bar` | `restaurante.pedido.bar` | Al confirmar pedido (si hay ítems BEBIDA) | `PedidoBarEvent` |
+| `pedido.cocina` | `restaurante.pedido.cocina` | Al confirmar pedido (si hay ítems COMIDA) | `ComandaRequestDTO` |
+| `pedido.bar` | `restaurante.pedido.bar` | Al confirmar pedido (si hay ítems BEBIDA) | `ComandaRequestDTO` |
+| `pedido.cancelacion` | `restaurante.pedido.cancelacion` | Al cancelar o devolver (global o por ítem) | `CancelacionEvent` |
 
 ### Eventos consumidos por este microservicio
 
 | Queue | Routing Key | Quién publica | Qué hace al recibirlo |
 |---|---|---|---|
-| `restaurante.pedido.estado` | `pedido.estado.actualizado` | Cocina / Bar | Actualiza el estado del pedido en BD |
+| `restaurante.pedido.estado` | `pedido.estado.actualizado` | Cocina / Bar | Actualiza el `EstadoPedido` global del pedido en BD |
+| `restaurante.plato.estado` | `pedido.plato.estado` | Cocina / Bar | Actualiza el `estadoDetalle` del ítem específico en BD |
 
-### Estados válidos que acepta el listener
+### Estados válidos que acepta el listener de estado global
 
-| Estado recibido | Transición permitida desde |
-|---|---|
-| `EN_PREPARACION` | Solo desde `ENVIADO_COCINA` |
-| `LISTO_PARA_SERVIR` | Solo desde `EN_PREPARACION` |
-| `CANCELADO` | Cualquier estado excepto `FACTURADO` o `CANCELADO` |
+| Estado recibido | Alias aceptado | Transición permitida desde |
+|---|---|---|
+| `EN_PREPARACION` | `PREPARANDO` | Solo desde `ENVIADO_COCINA` |
+| `LISTO_PARA_SERVIR` | `LISTO` | Solo desde `EN_PREPARACION` |
+| `CANCELADO` | — | Cualquier estado excepto `FACTURADO` o `CANCELADO` |
 
-> Si la transición no es válida, el evento se **ignora silenciosamente** (no se reencola) para evitar loops infinitos.
+> Si la transición no es válida, el evento se **ignora silenciosamente** (no se reencola) para evitar loops infinitos. Los alias (`PREPARANDO`, `LISTO`) se traducen automáticamente al enum interno de Restaurante.
 
 ### Estructura de los eventos
 
-**`PedidoCocinaEvent` / `PedidoBarEvent`:**
+**`ComandaRequestDTO`** — publicado a Cocina (`pedido.cocina`) y Bar (`pedido.bar`):
 ```json
 {
-  "idPedido": "uuid",
-  "numeroMesa": "Mesa 03",
-  "notas": "Para llevar",
-  "items": [
+  "idPedidoRestaurante": "uuid-del-pedido",
+  "idMesero": "uuid-del-mesero",
+  "nombreMesero": "Mesero a3f7c12b",
+  "idMesa": "uuid-de-la-mesa",
+  "numeroMesa": 3,
+  "fechaPedido": "2026-06-11T14:39:23.508",
+  "notasAdicionales": "Sin gluten",
+  "detalles": [
     {
-      "idProducto": "uuid-o-string",
-      "nombreProducto": "Bandeja Paisa",
+      "idDetallePedido": "uuid-del-detalle",
+      "idReceta": "uuid-de-la-receta",
       "cantidad": 2,
-      "observaciones": "Sin morcilla"
+      "observacionesPlato": "Sin morcilla"
     }
   ]
 }
 ```
 
-**`EstadoPedidoEvent`** (recibido desde Cocina/Bar):
+> Cocina recibe solo ítems con categoría `COMIDA`; Bar recibe solo ítems con categoría `BEBIDA`. El filtrado lo hace Restaurante antes de publicar.
+
+**`CancelacionEvent`** — publicado a Cocina y Bar (`pedido.cancelacion`):
+```json
+{
+  "idComanda": "uuid-del-pedido",
+  "idPlatoEspecifico": null,
+  "devolucion": false,
+  "motivo": "Error en el pedido"
+}
+```
+
+> `idPlatoEspecifico = null` cancela/devuelve todo el pedido. Con UUID cancela/devuelve ese ítem específico. `devolucion = false` → cancelar (no estaba listo); `devolucion = true` → devolver (ya fue preparado).
+
+**`EstadoPedidoEvent`** — recibido desde Cocina/Bar (`pedido.estado.actualizado`):
 ```json
 {
   "idPedido": "uuid",
@@ -420,6 +456,20 @@ El sistema usa un **Topic Exchange** llamado `gastrosena.pedidos`.
   "modulo": "COCINA"
 }
 ```
+
+**`NotificacionPlatoEvent`** — recibido desde Cocina/Bar (`pedido.plato.estado`):
+```json
+{
+  "idPedidoRestaurante": "uuid",
+  "idDetallePedido": "uuid-del-detalle",
+  "numeroMesa": 3,
+  "nombrePlato": "Bandeja Paisa",
+  "estadoPlato": "TERMINADO",
+  "fechaNotificacion": "2026-06-11T14:45:00"
+}
+```
+
+> `idDetallePedido` es requerido para actualizar el ítem correcto en `DetallePedido.estadoDetalle`. Si llega `null`, el evento se loguea sin actualizar nada.
 
 ---
 
@@ -449,7 +499,7 @@ X-User-Role: <ROL>
 
 ### Reglas de propiedad en pedidos
 
-Solo puede modificar un pedido (confirmar, cancelar, entregar):
+Solo puede modificar un pedido (confirmar, cancelar, entregar, devolver):
 - El mesero que lo creó (`meseroId == currentUserId`)
 - Un usuario con rol `INSTRUCTOR` o `ADMIN`
 
@@ -465,9 +515,17 @@ ga-ms-restaurante/
 │   │   │   ├── GaMsRestauranteApplication.java   # Punto de entrada
 │   │   │   │
 │   │   │   ├── amqp/                             # Mensajería RabbitMQ
-│   │   │   │   ├── dto/                          # Eventos: PedidoCocinaEvent, PedidoBarEvent, EstadoPedidoEvent
-│   │   │   │   ├── listener/                     # EstadoPedidoListener (consume respuestas de Cocina/Bar)
+│   │   │   │   ├── dto/                          # DTOs de eventos:
+│   │   │   │   │                                 #   ComandaRequestDTO (salida → Cocina/Bar)
+│   │   │   │   │                                 #   CancelacionEvent (salida → cancelaciones)
+│   │   │   │   │                                 #   NotificacionPlatoEvent (entrada ← estado por plato)
+│   │   │   │   │                                 #   EstadoPedidoEvent (entrada ← estado global)
+│   │   │   │   │                                 #   PedidoCocinaEvent, PedidoBarEvent (dominio interno)
+│   │   │   │   ├── listener/                     # EstadoPedidoListener (estado global Cocina/Bar → Restaurante)
+│   │   │   │   │                                 # EstadoPlatoListener (estado por plato → DetallePedido)
 │   │   │   │   └── publisher/                    # PedidoCocinaPublisher, PedidoBarPublisher
+│   │   │   │                                     # CancelacionPublisher
+│   │   │   │                                     # ComandaEventAdapter (traduce dominio → ComandaRequestDTO)
 │   │   │   │
 │   │   │   ├── caja/                             # Módulo de facturación
 │   │   │   │   ├── controller/                   # CajaController, FacturaController
@@ -479,7 +537,7 @@ ga-ms-restaurante/
 │   │   │   │   └── service/                      # CajaService, FacturaService (+ Impl)
 │   │   │   │
 │   │   │   ├── config/
-│   │   │   │   ├── amqp/                         # RabbitMQConfig (exchange, queues, bindings)
+│   │   │   │   ├── amqp/                         # RabbitMQConfig (exchange, 4 queues, bindings, ObjectMapper)
 │   │   │   │   ├── security/                     # MockSecurityFilter (dev), ProdUserContextFilter (prod)
 │   │   │   │   │                                 # SecurityConfig (dev), SecurityConfigProd (prod)
 │   │   │   │   └── web/                          # CorsConfig, OpenApiConfig
@@ -515,6 +573,7 @@ ga-ms-restaurante/
 │   │   │
 │   │   └── resources/
 │   │       ├── application.properties            # Perfil dev (H2, RabbitMQ local)
+│   │       ├── application-local.properties      # Perfil local (VM/VirtualBox — host y URL personalizados)
 │   │       └── application-prod.properties       # Perfil prod (MySQL, RabbitMQ Docker)
 │   │
 │   └── test/
@@ -607,7 +666,6 @@ docker.io/eidertapasco/ga-ms-restaurante:1.0.0
           ▼
 🪑 Mesero abre el módulo de MESAS
    └── Selecciona mesa LIBRE
-   └── Confirma número de comensales
    └── Mesa pasa a estado OCUPADA
           │
           ▼
@@ -619,14 +677,20 @@ docker.io/eidertapasco/ga-ms-restaurante:1.0.0
           ▼
 ✅ Mesero confirma el pedido
    └── Sistema separa ítems por categoría
-   └── Publica evento → Cola COCINA (platos)
-   └── Publica evento → Cola BAR (bebidas)
+   └── Publica ComandaRequestDTO → Cola COCINA (platos)
+   └── Publica ComandaRequestDTO → Cola BAR (bebidas)
    └── Pedido pasa a ENVIADO_COCINA
           │
           ▼
-👨‍🍳 Cocina/Bar procesan el pedido (microservicio externo)
-   └── Publica evento → restaurante.pedido.estado: EN_PREPARACION
-   └── Publica evento → restaurante.pedido.estado: LISTO_PARA_SERVIR
+👨‍🍳 Cocina/Bar procesan el pedido (microservicios externos)
+   └── Publican → restaurante.pedido.estado: EN_PREPARACION
+   └── Publican → restaurante.plato.estado: estado por cada plato/bebida
+   └── Publican → restaurante.pedido.estado: LISTO_PARA_SERVIR
+          │
+          │  (Si hay incidencia en cualquier punto)
+          │  └── Mesero cancela pedido → publica CancelacionEvent (global)
+          │  └── Mesero cancela ítem  → publica CancelacionEvent (por ítem)
+          │  └── Mesero devuelve ítem → publica CancelacionEvent (devolucion=true)
           │
           ▼
 🍽️ Mesero recoge y lleva el pedido a la mesa
@@ -657,6 +721,7 @@ main          ← producción estable (solo merge desde develop con PR aprobado)
 develop       ← integración continua, rama activa de desarrollo
 feature/*     ← funcionalidades nuevas (ej: feature/reporte-pdf)
 fix/*         ← correcciones de bugs (ej: fix/uuid-hibernate)
+docs/*        ← actualizaciones de documentación (ej: docs/actualizar-readme)
 ```
 
 ### Flujo de trabajo recomendado
@@ -679,19 +744,19 @@ git push origin feature/nombre-descriptivo
 ### Convención de commits
 
 ```
-feat(modulo):    nueva funcionalidad
-fix(modulo):     corrección de bug
+feat(modulo):     nueva funcionalidad
+fix(modulo):      corrección de bug
 refactor(modulo): cambio de código sin cambio funcional
-chore(modulo):   configuración, dependencias, CI/CD
-docs(modulo):    documentación
+chore(modulo):    configuración, dependencias, CI/CD
+docs(modulo):     documentación
 ```
 
 **Ejemplos:**
 ```
-feat(caja): agregar endpoint de descarga de PDF por factura
-fix(pedido): corregir transición de estado EN_PREPARACION → LISTO_PARA_SERVIR
+feat(amqp): implementar ComandaEventAdapter para integración con Cocina y Bar
+fix(amqp): corregir serialización de LocalDateTime en RabbitMQ MessageConverter
 chore(docker): actualizar imagen base a eclipse-temurin:21-jre
-docs(readme): agregar sección de mensajería RabbitMQ
+docs(readme): actualizar sección de mensajería con nuevos eventos
 ```
 
 ---
@@ -706,6 +771,8 @@ docs(readme): agregar sección de mensajería RabbitMQ
 | `Solo se pueden facturar pedidos en estado ENTREGADO` | El pedido no ha completado el ciclo | El mesero debe marcar el pedido como entregado primero |
 | UUID en formato binario en MySQL | Hibernate 6 por defecto usa BINARY | Ya configurado con `preferred_uuid_jdbc_type=CHAR` en `application-prod.properties` |
 | H2 console no carga en prod | La consola H2 está deshabilitada en prod | Es intencional; usa MySQL Workbench o similar para prod |
+| `fechaPedido` llega como array a Cocina/Bar | Jackson serializa `LocalDateTime` como array por defecto | Configurado con `write-dates-as-timestamps=false` en `application.properties` |
+| Estado `"LISTO"` de Bar es ignorado | Bar usa su enum interno en lugar del nombre esperado | El `EstadoPedidoListener` traduce `"LISTO"` → `LISTO_PARA_SERVIR` automáticamente |
 
 ---
 
@@ -718,6 +785,12 @@ docs(readme): agregar sección de mensajería RabbitMQ
 - **La categoría `COMIDA`/`BEBIDA` debe venir del frontend**. El backend no consulta el catálogo de productos; el cliente es quien conoce la categoría de cada ítem y la debe incluir en el `DetallePedidoRequest`.
 
 - **El módulo de autenticación JWT** es responsabilidad de otro microservicio del proyecto. Este servicio solo lee los headers `X-User-Id` y `X-User-Role` que el gateway ya validó.
+
+- **`ComandaEventAdapter`** traduce la nomenclatura interna de Restaurante a la que esperan Cocina y Bar (`items` → `detalles`, `notas` → `notasAdicionales`, `idProducto` → `idReceta`, `observaciones` → `observacionesPlato`). El núcleo del dominio nunca necesita conocer la nomenclatura externa.
+
+- **`nombreMesero` en `ComandaRequestDTO`** es actualmente un mock temporal (`"Mesero " + primeros 8 chars del UUID`). Cuando el módulo de Usuarios esté disponible, se reemplaza esa línea en `ComandaEventAdapter.mockNombreMesero()` sin cambios adicionales.
+
+- **`estadoDetalle` en `DetallePedido`** es un campo informativo (no afecta la lógica de negocio). Se actualiza cuando Cocina o Bar notifican el estado de un plato/bebida individual vía `restaurante.plato.estado`. Valores posibles: `PENDIENTE`, `PREPARANDO`, `TERMINADO`, `CANCELADO`, `DEVUELTO`.
 
 ---
 
