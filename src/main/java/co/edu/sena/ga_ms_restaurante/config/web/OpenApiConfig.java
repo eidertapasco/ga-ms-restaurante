@@ -13,20 +13,18 @@ public class OpenApiConfig {
 
     @Bean
     public OpenAPI customOpenAPI() {
-        final String securitySchemeName = "bearerAuth";
+        final String securitySchemeName = "X-User-Rol";
 
         return new OpenAPI()
                 .info(new Info()
                         .title("API Gestión de Restaurante - GastroSena")
                         .version("1.0")
                         .description("Backend para gestión de pedidos de restaurante"))
-                // Configuración para que Swagger exija el Token JWT
                 .addSecurityItem(new SecurityRequirement().addList(securitySchemeName))
                 .components(new Components()
                         .addSecuritySchemes(securitySchemeName, new SecurityScheme()
-                                .name(securitySchemeName)
-                                .type(SecurityScheme.Type.HTTP)
-                                .scheme("bearer")
-                                .bearerFormat("JWT")));
+                                .name("X-User-Rol")
+                                .type(SecurityScheme.Type.APIKEY)
+                                .in(SecurityScheme.In.HEADER)));
     }
 }
