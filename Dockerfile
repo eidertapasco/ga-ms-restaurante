@@ -8,6 +8,18 @@ WORKDIR /app
 # Copiamos primero el pom.xml para aprovechar caché de capas
 # (si no cambia el pom, Maven no vuelve a descargar dependencias)
 COPY pom.xml .
+
+# Copiamos la librería local ANTES de descargar dependencias
+COPY libs ./libs
+# Instalamos el .jar local en el repositorio Maven del contenedor
+RUN mvn install:install-file \
+    -Dfile=libs/ga-lib-security-0.0.1-SNAPSHOT.jar \
+    -DgroupId=co.edu.sena \
+    -DartifactId=ga-lib-security \
+    -Dversion=0.0.1-SNAPSHOT \
+    -Dpackaging=jar \
+    -DgeneratePom=true
+
 RUN mvn dependency:go-offline -B
 
 # Ahora copiamos el código fuente

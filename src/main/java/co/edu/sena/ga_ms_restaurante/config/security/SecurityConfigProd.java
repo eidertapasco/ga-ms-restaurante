@@ -1,4 +1,4 @@
-package co.edu.sena.ga_ms_restaurante.config.security;
+/*package co.edu.sena.ga_ms_restaurante.config.security;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -26,3 +26,5 @@ public class SecurityConfigProd {
         return http.build();
     }
 }
+
+ */
