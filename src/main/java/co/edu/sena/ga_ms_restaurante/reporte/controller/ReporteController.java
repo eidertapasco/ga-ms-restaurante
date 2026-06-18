@@ -13,7 +13,7 @@ import java.util.List;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/reportes")
+@RequestMapping("/api/restaurante/reportes")
 @RequiredArgsConstructor
 @RequireRole({RolEnum.INSTRUCTOR, RolEnum.ADMINISTRADOR}) // Aplicado a toda la clase, el CAJERO NO entra.
 public class ReporteController {

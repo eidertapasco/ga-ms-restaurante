@@ -12,10 +12,9 @@ services:
       MYSQL_USER: gastrosena
       MYSQL_PASSWORD: gastrosena123
     ports:
-      - "3307:3306"   # 3307 en tu PC → 3306 dentro del contenedor
-      # usamos 3307 para no chocar con MySQL local si lo tienes
+      - "3307:3306"
     volumes:
-      - mysql_data:/var/lib/mysql   # los datos persisten aunque el contenedor se apague
+      - mysql_data:/var/lib/mysql
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
       interval: 10s
@@ -30,30 +29,30 @@ services:
       RABBITMQ_DEFAULT_USER: guest
       RABBITMQ_DEFAULT_PASS: guest
     ports:
-      - "5672:5672"     # puerto de mensajería
-      - "15672:15672"   # panel web (http://localhost:15672)
+      - "5672:5672"
+      - "15672:15672"
 
   # ─── Backend Spring Boot ───────────────────────────────────────────────────
-  backend:
+  restaurante:
     build:
-      context: .        # busca el Dockerfile en la raíz
+      context: .
       dockerfile: Dockerfile
-    container_name: gastrosena-backend
+    container_name: gastrosena-restaurante
     environment:
       DB_USERNAME: root
       DB_PASSWORD: root
       RABBITMQ_HOST: rabbitmq
       RABBITMQ_USER: guest
       RABBITMQ_PASS: guest
-      SPRING_JPA_PROPERTIES_HIBERNATE_TYPE_PREFERRED__UUID__JDBC__TYPE: CHAR  # ← Correccion del bug de UUIDs
+      SPRING_JPA_PROPERTIES_HIBERNATE_TYPE_PREFERRED__UUID__JDBC__TYPE: CHAR
     ports:
       - "8080:8080"
     depends_on:
       mysql:
-        condition: service_healthy   # espera a que MySQL esté listo
+        condition: service_healthy
       rabbitmq:
         condition: service_started
-    restart: on-failure  # si falla al conectar, intenta reiniciar
+    restart: on-failure
 
 # ─── Volúmenes persistentes ────────────────────────────────────────────────
 volumes:

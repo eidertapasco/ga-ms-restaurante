@@ -5,14 +5,11 @@ services:
   mysql:
     image: mysql:8.0
     container_name: gastrosena-mysql
-    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
     environment:
       MYSQL_ROOT_PASSWORD: root
       MYSQL_DATABASE: modulo_restaurante
     ports:
       - "3307:3306"
-    volumes:
-      - mysql_data:/var/lib/mysql
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
       interval: 10s
@@ -29,6 +26,19 @@ services:
       - "5672:5672"
       - "15672:15672"
 
+  gateway:
+    image: stiven77/api-gateway-gastrosena:latest
+    container_name: gastrosena-gateway
+    ports:
+      - "8088:8088"
+    environment:
+      GATEWAY_PORT: 8088
+      SVC_RESTAURANTE_URI: http://restaurante:8080
+      SECURITY_SECRET: ZGV2LXBsYWNlaG9sZGVyLXNlY3JldC1vdmVycmlkZS13aXRoLVNFQ1VSSVRZX1NFQ1JFVC1pbi1wcm9k
+    depends_on:
+      - restaurante
+    restart: on-failure
+
   restaurante:
     image: eidertapasco/ga-ms-restaurante:latest
     container_name: gastrosena-restaurante
@@ -39,7 +49,6 @@ services:
       RABBITMQ_HOST: rabbitmq
       RABBITMQ_USER: guest
       RABBITMQ_PASS: guest
-      SPRING_APPLICATION_JSON: '{"spring":{"jpa":{"properties":{"hibernate":{"type":{"preferred_uuid_jdbc_type":"CHAR"}}}}}}'
     ports:
       - "8080:8080"
     depends_on:
