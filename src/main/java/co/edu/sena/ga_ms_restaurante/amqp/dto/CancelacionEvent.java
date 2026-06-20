@@ -11,13 +11,19 @@ import java.util.UUID;
  * o devuelve un pedido (globalmente) o un ítem específico.
  *
  * Exchange : gastrosena.pedidos
- * Routing Key: pedido.cancelacion
+ * Routing Key: pedido.cancelacion.cocina | pedido.cancelacion.bar
  *
  * idPlatoEspecifico = null  → cancela/devuelve TODO el pedido
  * idPlatoEspecifico = UUID  → cancela/devuelve ese DetallePedido específico
  *
  * devolucion = false → cancelar (el plato aún no estaba listo)
  * devolucion = true  → devolver (el plato ya estaba listo / fue preparado)
+ *
+ * cantidad = null  → todas las unidades activas de ese detalle (compatibilidad)
+ * cantidad = N     → cancela/devuelve N unidades (parcial)
+ *
+ * IMPORTANTE: el nombre del campo debe ser EXACTAMENTE "cantidad";
+ * Cocina y Bar deserializan por nombre de campo.
  */
 @Data
 @AllArgsConstructor
@@ -31,4 +37,6 @@ public class CancelacionEvent {
     private boolean devolucion;       // false = cancelar | true = devolver
 
     private String motivo;            // descripción textual del motivo
+
+    private Integer cantidad;         // null = todas las unidades | N = parcial
 }

@@ -20,10 +20,18 @@ public class RabbitMQConfig {
     public static final String QUEUE_ESTADO_PEDIDO = "restaurante.pedido.estado";
     public static final String QUEUE_PLATO_ESTADO  = "restaurante.plato.estado";
 
+    // Colas de cancelación/devolución separadas por módulo
+    public static final String QUEUE_CANCELACION_COCINA = "restaurante.pedido.cancelacion.cocina";
+    public static final String QUEUE_CANCELACION_BAR    = "restaurante.pedido.cancelacion.bar";
+
     public static final String RK_COCINA             = "pedido.cocina";
     public static final String RK_BAR                = "pedido.bar";
     public static final String RK_ESTADO_ACTUALIZADO = "pedido.estado.actualizado";
     public static final String RK_PLATO_ESTADO       = "pedido.plato.estado";
+
+    // Routing keys de cancelación/devolución separadas por módulo
+    public static final String RK_CANCELACION_COCINA = "pedido.cancelacion.cocina";
+    public static final String RK_CANCELACION_BAR    = "pedido.cancelacion.bar";
 
     // ── Exchange ──────────────────────────────────────────────────────────────
     @Bean
@@ -50,6 +58,16 @@ public class RabbitMQConfig {
     @Bean
     public Queue queuePlatoEstado() {
         return QueueBuilder.durable(QUEUE_PLATO_ESTADO).build();
+    }
+
+    @Bean
+    public Queue queueCancelacionCocina() {
+        return QueueBuilder.durable(QUEUE_CANCELACION_COCINA).build();
+    }
+
+    @Bean
+    public Queue queueCancelacionBar() {
+        return QueueBuilder.durable(QUEUE_CANCELACION_BAR).build();
     }
 
     // ── Bindings ──────────────────────────────────────────────────────────────
@@ -79,6 +97,20 @@ public class RabbitMQConfig {
         return BindingBuilder.bind(queuePlatoEstado())
                 .to(gastroSenaExchange())
                 .with(RK_PLATO_ESTADO);
+    }
+
+    @Bean
+    public Binding bindingCancelacionCocina() {
+        return BindingBuilder.bind(queueCancelacionCocina())
+                .to(gastroSenaExchange())
+                .with(RK_CANCELACION_COCINA);
+    }
+
+    @Bean
+    public Binding bindingCancelacionBar() {
+        return BindingBuilder.bind(queueCancelacionBar())
+                .to(gastroSenaExchange())
+                .with(RK_CANCELACION_BAR);
     }
 
     // ── Serialización JSON ────────────────────────────────────────────────────

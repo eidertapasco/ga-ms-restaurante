@@ -37,6 +37,7 @@ public class PedidoMapper {
         resp.setSubtotalLinea(detalle.getSubtotalLinea());
         //resp.setCategoria(detalle.getCategoria());
         resp.setObservaciones(detalle.getObservaciones());
+        resp.setEstadoDetalle(detalle.getEstadoDetalle());
         return resp;
     }
 
