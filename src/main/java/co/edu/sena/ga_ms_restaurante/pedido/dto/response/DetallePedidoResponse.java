@@ -16,4 +16,8 @@ public class DetallePedidoResponse {
     private BigDecimal subtotalLinea;
     //private String categoria; solo si el frontend requiere que le devuelva la categoria tambien
     private String observaciones;
+
+    // Estado individual del ítem según Cocina/Bar.
+    // Valores: PENDIENTE | PREPARANDO | TERMINADO | CANCELADO | DEVUELTO
+    private String estadoDetalle;
 }
