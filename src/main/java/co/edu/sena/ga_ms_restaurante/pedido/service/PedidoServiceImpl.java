@@ -189,8 +189,7 @@ public class PedidoServiceImpl implements PedidoService {
             log.info("Mesa {} liberada por cancelación del pedido {}", mesa.getNombre(), pedidoId);
 
             // Notificar a Cocina y Bar solo si el pedido ya había sido enviado
-            cancelacionPublisher.publicar(
-                    new CancelacionEvent(pedido.getId(), null, false, motivo));
+            notificarCancelacionGlobal(pedido, false, motivo);
         }
 
         return pedidoMapper.toResponse(pedidoRepository.save(pedido));
@@ -221,18 +220,17 @@ public class PedidoServiceImpl implements PedidoService {
         mesa.setEstado(EstadoMesa.LIBRE);
         mesaRepository.save(mesa);
 
-        cancelacionPublisher.publicar(
-                new CancelacionEvent(pedido.getId(), null, true, motivo));
+        notificarCancelacionGlobal(pedido, true, motivo);
 
         log.info("Pedido {} devuelto (global) — mesa {} liberada", pedidoId, mesa.getNombre());
         return pedidoMapper.toResponse(pedidoRepository.save(pedido));
     }
 
-    // ─── CANCELAR ÍTEM ────────────────────────────────────────────────────────
+    // ─── CANCELAR ÍTEM (parcial o total) ──────────────────────────────────────
 
     @Override
     @Transactional
-    public PedidoResponse cancelarDetalle(UUID detalleId, String motivo) {
+    public PedidoResponse cancelarDetalle(UUID detalleId, String motivo, Integer cantidad) {
 
         DetallePedido detalle = obtenerDetalleOFalla(detalleId);
         Pedido pedido = detalle.getPedido();
@@ -247,13 +245,35 @@ public class PedidoServiceImpl implements PedidoService {
 
         validarPropietarioOInstructor(pedido);
 
-        detalle.setEstadoDetalle("CANCELADO");
+        int activa    = detalle.getCantidad();
+        int aCancelar = (cantidad != null) ? cantidad : activa;   // null = todas
+
+        if (aCancelar <= 0 || aCancelar > activa) {
+            throw new BusinessRuleException(
+                    "Cantidad inválida: " + aCancelar + " (unidades activas: " + activa + ")");
+        }
+
+        if (aCancelar == activa) {
+            // Cancelación total del ítem (comportamiento de siempre)
+            detalle.setEstadoDetalle("CANCELADO");
+        } else {
+            // Cancelación parcial: se descuentan unidades y se recalcula la línea
+            int restantes = activa - aCancelar;
+            detalle.setCantidad(restantes);
+            detalle.setSubtotalLinea(
+                    detalle.getPrecioUnitario().multiply(BigDecimal.valueOf(restantes)));
+        }
         detallePedidoRepository.save(detalle);
 
-        cancelacionPublisher.publicar(
-                new CancelacionEvent(pedido.getId(), detalleId, false, motivo));
+        // Recalcular el subtotal del pedido para que la factura no cobre lo cancelado
+        recalcularSubtotal(pedido);
+        pedidoRepository.save(pedido);
 
-        log.info("Ítem {} cancelado del pedido {}", detalleId, pedido.getId());
+        // Notificar a Cocina/Bar (según categoría) con la cantidad cancelada
+        notificarCancelacionDetalle(detalle, false, motivo, aCancelar);
+
+        log.info("Ítem {} — canceladas {} de {} unidades (pedido {})",
+                detalleId, aCancelar, activa, pedido.getId());
 
         // Si todos los ítems quedaron cancelados → cerrar el pedido completo
         boolean todosCancelados = detallePedidoRepository
@@ -274,11 +294,11 @@ public class PedidoServiceImpl implements PedidoService {
         return pedidoMapper.toResponse(obtenerPedidoOFalla(pedido.getId()));
     }
 
-    // ─── DEVOLVER ÍTEM ────────────────────────────────────────────────────────
+    // ─── DEVOLVER ÍTEM (parcial o total) ──────────────────────────────────────
 
     @Override
     @Transactional
-    public PedidoResponse devolverDetalle(UUID detalleId, String motivo) {
+    public PedidoResponse devolverDetalle(UUID detalleId, String motivo, Integer cantidad) {
 
         DetallePedido detalle = obtenerDetalleOFalla(detalleId);
         Pedido pedido = detalle.getPedido();
@@ -291,13 +311,33 @@ public class PedidoServiceImpl implements PedidoService {
 
         validarPropietarioOInstructor(pedido);
 
-        detalle.setEstadoDetalle("DEVUELTO");
+        int activa    = detalle.getCantidad();
+        int aDevolver = (cantidad != null) ? cantidad : activa;   // null = todas
+
+        if (aDevolver <= 0 || aDevolver > activa) {
+            throw new BusinessRuleException(
+                    "Cantidad inválida: " + aDevolver + " (unidades activas: " + activa + ")");
+        }
+
+        if (aDevolver == activa) {
+            // Devolución total del ítem
+            detalle.setEstadoDetalle("DEVUELTO");
+        } else {
+            // Devolución parcial: se descuentan unidades y se recalcula la línea
+            int restantes = activa - aDevolver;
+            detalle.setCantidad(restantes);
+            detalle.setSubtotalLinea(
+                    detalle.getPrecioUnitario().multiply(BigDecimal.valueOf(restantes)));
+        }
         detallePedidoRepository.save(detalle);
 
-        cancelacionPublisher.publicar(
-                new CancelacionEvent(pedido.getId(), detalleId, true, motivo));
+        recalcularSubtotal(pedido);
+        pedidoRepository.save(pedido);
 
-        log.info("Ítem {} devuelto del pedido {}", detalleId, pedido.getId());
+        notificarCancelacionDetalle(detalle, true, motivo, aDevolver);
+
+        log.info("Ítem {} — devueltas {} de {} unidades (pedido {})",
+                detalleId, aDevolver, activa, pedido.getId());
         return pedidoMapper.toResponse(obtenerPedidoOFalla(pedido.getId()));
     }
 
@@ -392,6 +432,20 @@ public class PedidoServiceImpl implements PedidoService {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
+    /**
+     * Recalcula el subtotal del pedido sumando solo las líneas vigentes,
+     * es decir, excluyendo los ítems totalmente cancelados o devueltos.
+     * Así la factura nunca cobra unidades que ya no se sirvieron.
+     */
+    private void recalcularSubtotal(Pedido pedido) {
+        BigDecimal nuevo = pedido.getDetalles().stream()
+                .filter(d -> !"CANCELADO".equalsIgnoreCase(d.getEstadoDetalle())
+                        && !"DEVUELTO".equalsIgnoreCase(d.getEstadoDetalle()))
+                .map(DetallePedido::getSubtotalLinea)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        pedido.setSubtotal(nuevo);
+    }
+
     private void validarPropietarioOInstructor(Pedido pedido) {
         UUID currentUserId = UserContextHolder.getCurrentUserId();
         String currentRole = UserContextHolder.getCurrentUserRole();
@@ -404,5 +458,43 @@ public class PedidoServiceImpl implements PedidoService {
             throw new BusinessRuleException(
                     "No tienes permiso para modificar este pedido");
         }
+    }
+
+    /**
+     * Enruta la cancelación/devolución de un ítem puntual al módulo correcto
+     * según su categoría (COMIDA → Cocina, BEBIDA → Bar), incluyendo la cantidad.
+     */
+    private void notificarCancelacionDetalle(DetallePedido detalle, boolean devolucion,
+                                             String motivo, Integer cantidad) {
+        CancelacionEvent evento = new CancelacionEvent(
+                detalle.getPedido().getId(), detalle.getId(), devolucion, motivo, cantidad);
+
+        String categoria = detalle.getCategoria();
+        if ("COMIDA".equalsIgnoreCase(categoria)) {
+            cancelacionPublisher.publicarACocina(evento);
+        } else if ("BEBIDA".equalsIgnoreCase(categoria)) {
+            cancelacionPublisher.publicarABar(evento);
+        } else {
+            log.warn("Categoría desconocida '{}' en detalle {} — no se notifica cancelación",
+                    categoria, detalle.getId());
+        }
+    }
+
+    /**
+     * Enruta una cancelación/devolución global solo a los módulos que realmente
+     * tengan ítems de su categoría en el pedido (mismo criterio que la confirmación).
+     * cantidad = null → afecta todas las unidades activas de cada ítem.
+     */
+    private void notificarCancelacionGlobal(Pedido pedido, boolean devolucion, String motivo) {
+        CancelacionEvent evento = new CancelacionEvent(
+                pedido.getId(), null, devolucion, motivo, null);
+
+        boolean hayComida = pedido.getDetalles().stream()
+                .anyMatch(d -> "COMIDA".equalsIgnoreCase(d.getCategoria()));
+        boolean hayBebida = pedido.getDetalles().stream()
+                .anyMatch(d -> "BEBIDA".equalsIgnoreCase(d.getCategoria()));
+
+        if (hayComida) cancelacionPublisher.publicarACocina(evento);
+        if (hayBebida) cancelacionPublisher.publicarABar(evento);
     }
 }

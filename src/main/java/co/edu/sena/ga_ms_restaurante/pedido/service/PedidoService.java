@@ -22,11 +22,17 @@ public interface PedidoService {
     /** Devuelve todo el pedido (ya fue preparado). Notifica a Cocina/Bar. */
     PedidoResponse devolverGlobal(UUID pedidoId, String motivo);
 
-    /** Cancela un ítem puntual (aún no estaba listo). Notifica a Cocina/Bar. */
-    PedidoResponse cancelarDetalle(UUID detalleId, String motivo);
+    /**
+     * Cancela un ítem puntual (aún no estaba listo). Notifica a Cocina/Bar.
+     * @param cantidad unidades a cancelar; null = todas las unidades activas.
+     */
+    PedidoResponse cancelarDetalle(UUID detalleId, String motivo, Integer cantidad);
 
-    /** Devuelve un ítem puntual (ya estaba listo). Notifica a Cocina/Bar. */
-    PedidoResponse devolverDetalle(UUID detalleId, String motivo);
+    /**
+     * Devuelve un ítem puntual (ya estaba listo). Notifica a Cocina/Bar.
+     * @param cantidad unidades a devolver; null = todas las unidades activas.
+     */
+    PedidoResponse devolverDetalle(UUID detalleId, String motivo, Integer cantidad);
 
     PedidoResponse buscarPorId(UUID id);
 

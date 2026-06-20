@@ -101,21 +101,25 @@ public class PedidoController {
         return ResponseEntity.ok(pedidoService.devolverGlobal(id, motivo));
     }
 
-    // PATCH /api/pedidos/detalle/{idDetalle}/cancelar?motivo=...
+    // PATCH /api/pedidos/detalle/{idDetalle}/cancelar?motivo=...&cantidad=...
+    // cantidad es opcional: si se omite, se cancela el ítem completo.
     @PatchMapping("/detalle/{idDetalle}/cancelar")
     @RequireRole({RolEnum.MESERO, RolEnum.INSTRUCTOR, RolEnum.ADMINISTRADOR})
     public ResponseEntity<PedidoResponse> cancelarDetalle(
             @PathVariable UUID idDetalle,
-            @RequestParam(required = false) String motivo) {
-        return ResponseEntity.ok(pedidoService.cancelarDetalle(idDetalle, motivo));
+            @RequestParam(required = false) String motivo,
+            @RequestParam(required = false) Integer cantidad) {
+        return ResponseEntity.ok(pedidoService.cancelarDetalle(idDetalle, motivo, cantidad));
     }
 
-    // PATCH /api/pedidos/detalle/{idDetalle}/devolver?motivo=...
+    // PATCH /api/pedidos/detalle/{idDetalle}/devolver?motivo=...&cantidad=...
+    // cantidad es opcional: si se omite, se devuelve el ítem completo.
     @PatchMapping("/detalle/{idDetalle}/devolver")
     @RequireRole({RolEnum.MESERO, RolEnum.INSTRUCTOR, RolEnum.ADMINISTRADOR})
     public ResponseEntity<PedidoResponse> devolverDetalle(
             @PathVariable UUID idDetalle,
-            @RequestParam(required = false) String motivo) {
-        return ResponseEntity.ok(pedidoService.devolverDetalle(idDetalle, motivo));
+            @RequestParam(required = false) String motivo,
+            @RequestParam(required = false) Integer cantidad) {
+        return ResponseEntity.ok(pedidoService.devolverDetalle(idDetalle, motivo, cantidad));
     }
 }
