@@ -17,6 +17,9 @@ import co.edu.sena.ga_ms_restaurante.pedido.dto.response.PedidoResponse;
 import co.edu.sena.ga_ms_restaurante.pedido.enums.EstadoDetallePedido;
 import co.edu.sena.ga_ms_restaurante.pedido.enums.EstadoPedido;
 import co.edu.sena.ga_ms_restaurante.pedido.incidencia.dto.response.IncidenciaPedidoResponse;
+import co.edu.sena.ga_ms_restaurante.pedido.incidencia.enums.EstadoIncidencia;
+import co.edu.sena.ga_ms_restaurante.pedido.incidencia.enums.TipoIncidencia;
+import co.edu.sena.ga_ms_restaurante.pedido.incidencia.model.IncidenciaPedido;
 import co.edu.sena.ga_ms_restaurante.pedido.incidencia.repository.IncidenciaPedidoRepository;
 import co.edu.sena.ga_ms_restaurante.pedido.mapper.PedidoMapper;
 import co.edu.sena.ga_ms_restaurante.pedido.model.DetallePedido;
@@ -32,12 +35,22 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class PedidoServiceImpl implements PedidoService {
+
+    private static final Set<EstadoPedido> ESTADOS_PEDIDO_CANCELABLE =
+            Set.of(EstadoPedido.BORRADOR, EstadoPedido.ENVIADO_COCINA, EstadoPedido.EN_PREPARACION);
+
+    private static final Set<EstadoPedido> ESTADOS_PEDIDO_DEVOLVIBLE =
+            Set.of(EstadoPedido.LISTO_PARA_SERVIR, EstadoPedido.ENTREGADO);
+
+    private static final Set<EstadoDetallePedido> ESTADOS_ITEM_CANCELABLE =
+            Set.of(EstadoDetallePedido.PENDIENTE, EstadoDetallePedido.PREPARANDO);
 
     private final PedidoRepository           pedidoRepository;
     private final MesaRepository             mesaRepository;
@@ -46,7 +59,7 @@ public class PedidoServiceImpl implements PedidoService {
     private final PedidoBarPublisher         barPublisher;
     private final DetallePedidoRepository    detallePedidoRepository;
     private final CancelacionPublisher       cancelacionPublisher;
-    private final IncidenciaPedidoRepository incidenciaPedidoRepository; // NUEVO
+    private final IncidenciaPedidoRepository incidenciaPedidoRepository;
 
     // ─── CREAR ───────────────────────────────────────────────────────────────
 
@@ -106,7 +119,6 @@ public class PedidoServiceImpl implements PedidoService {
 
         validarPropietarioOInstructor(pedido);
 
-        // Separar ítems por categoría directamente desde las entidades DetallePedido
         List<PedidoCocinaEvent.Item> itemsCocina = pedido.getDetalles().stream()
                 .filter(d -> "COMIDA".equalsIgnoreCase(d.getCategoria()))
                 .map(d -> new PedidoCocinaEvent.Item(
@@ -127,7 +139,6 @@ public class PedidoServiceImpl implements PedidoService {
                         d.getObservaciones()))
                 .toList();
 
-        // El adapter construye el ComandaRequestDTO completo — logs dentro de cada publisher
         if (!itemsCocina.isEmpty()) {
             cocinaPublisher.publicar(pedido, itemsCocina);
         }
@@ -168,16 +179,16 @@ public class PedidoServiceImpl implements PedidoService {
     }
 
     // ─── CANCELAR (global) ────────────────────────────────────────────────────
-    // Sin cambios de regla en este bloque — eso es feature/reglas-cancelacion-devolucion.
+    // Solo se permite mientras el pedido no tenga ningún ítem ya preparado.
 
     @Override
     @Transactional
     public PedidoResponse cancelar(UUID pedidoId, String motivo) {
 
         Pedido pedido = obtenerPedidoOFalla(pedidoId);
-
         EstadoPedido estadoActual = pedido.getEstado();
-        if (estadoActual == EstadoPedido.FACTURADO || estadoActual == EstadoPedido.CANCELADO) {
+
+        if (!ESTADOS_PEDIDO_CANCELABLE.contains(estadoActual)) {
             throw new BusinessRuleException(
                     "No se puede cancelar un pedido en estado: " + estadoActual);
         }
@@ -186,56 +197,55 @@ public class PedidoServiceImpl implements PedidoService {
 
         pedido.setEstado(EstadoPedido.CANCELADO);
         pedido.setFechaCierre(LocalDateTime.now());
+        pedido.getDetalles().forEach(d -> d.setEstadoDetalle(EstadoDetallePedido.CANCELADO));
+        detallePedidoRepository.saveAll(pedido.getDetalles());
 
         if (estadoActual != EstadoPedido.BORRADOR) {
             Mesa mesa = pedido.getMesa();
             mesa.setEstado(EstadoMesa.LIBRE);
             mesaRepository.save(mesa);
             log.info("Mesa {} liberada por cancelación del pedido {}", mesa.getNombre(), pedidoId);
-
-            // Notificar a Cocina y Bar solo si el pedido ya había sido enviado
             notificarCancelacionGlobal(pedido, false, motivo);
         }
+
+        registrarIncidencia(pedido, null, TipoIncidencia.CANCELACION, null, motivo, null);
 
         return construirRespuesta(pedidoRepository.save(pedido));
     }
 
     // ─── DEVOLVER (global) ────────────────────────────────────────────────────
-    // OJO: esta rama NO corrige todavía el "pedido.setEstado(CANCELADO)" de abajo.
-    // Esa corrección (usar EN_DEVOLUCION y no exigir ENTREGADO) es exactamente
-    // el contenido de la rama feature/reglas-cancelacion-devolucion. Aquí solo
-    // se deja compilando igual que antes.
+    // Solo se permite cuando el pedido ya está LISTO_PARA_SERVIR o ENTREGADO.
+    // No cierra el pedido ni libera la mesa: sigue activo mientras se reprocesa.
 
     @Override
     @Transactional
     public PedidoResponse devolverGlobal(UUID pedidoId, String motivo) {
 
         Pedido pedido = obtenerPedidoOFalla(pedidoId);
-
         EstadoPedido estadoActual = pedido.getEstado();
-        if (estadoActual == EstadoPedido.FACTURADO
-                || estadoActual == EstadoPedido.CANCELADO
-                || estadoActual == EstadoPedido.BORRADOR) {
+
+        if (!ESTADOS_PEDIDO_DEVOLVIBLE.contains(estadoActual)) {
             throw new BusinessRuleException(
                     "No se puede devolver un pedido en estado: " + estadoActual);
         }
 
         validarPropietarioOInstructor(pedido);
 
-        pedido.setEstado(EstadoPedido.CANCELADO);
-        pedido.setFechaCierre(LocalDateTime.now());
-
-        Mesa mesa = pedido.getMesa();
-        mesa.setEstado(EstadoMesa.LIBRE);
-        mesaRepository.save(mesa);
+        pedido.getDetalles().stream()
+                .filter(d -> d.getEstadoDetalle() != EstadoDetallePedido.CANCELADO)
+                .forEach(d -> d.setEstadoDetalle(EstadoDetallePedido.EN_DEVOLUCION));
+        detallePedidoRepository.saveAll(pedido.getDetalles());
+        pedido.setEstado(EstadoPedido.EN_DEVOLUCION);
 
         notificarCancelacionGlobal(pedido, true, motivo);
+        registrarIncidencia(pedido, null, TipoIncidencia.DEVOLUCION, null, motivo, estadoActual);
 
-        log.info("Pedido {} devuelto (global) — mesa {} liberada", pedidoId, mesa.getNombre());
+        log.info("Pedido {} en devolución — mesa sigue ocupada", pedidoId);
         return construirRespuesta(pedidoRepository.save(pedido));
     }
 
     // ─── CANCELAR ÍTEM (parcial o total) ──────────────────────────────────────
+    // Solo se permite mientras el ítem está PENDIENTE o PREPARANDO.
 
     @Override
     @Transactional
@@ -244,18 +254,19 @@ public class PedidoServiceImpl implements PedidoService {
         DetallePedido detalle = obtenerDetalleOFalla(detalleId);
         Pedido pedido = detalle.getPedido();
 
-        EstadoPedido estadoActual = pedido.getEstado();
-        if (estadoActual == EstadoPedido.FACTURADO
-                || estadoActual == EstadoPedido.CANCELADO
-                || estadoActual == EstadoPedido.BORRADOR) {
+        if (pedido.getEstado() == EstadoPedido.FACTURADO || pedido.getEstado() == EstadoPedido.CANCELADO) {
             throw new BusinessRuleException(
-                    "No se puede cancelar un ítem de un pedido en estado: " + estadoActual);
+                    "No se puede cancelar un ítem de un pedido en estado: " + pedido.getEstado());
+        }
+        if (!ESTADOS_ITEM_CANCELABLE.contains(detalle.getEstadoDetalle())) {
+            throw new BusinessRuleException(
+                    "No se puede cancelar un ítem en estado: " + detalle.getEstadoDetalle());
         }
 
         validarPropietarioOInstructor(pedido);
 
         int activa    = detalle.getCantidad();
-        int aCancelar = (cantidad != null) ? cantidad : activa;   // null = todas
+        int aCancelar = (cantidad != null) ? cantidad : activa;
 
         if (aCancelar <= 0 || aCancelar > activa) {
             throw new BusinessRuleException(
@@ -263,10 +274,8 @@ public class PedidoServiceImpl implements PedidoService {
         }
 
         if (aCancelar == activa) {
-            // Cancelación total del ítem (comportamiento de siempre)
-            detalle.setEstadoDetalle(EstadoDetallePedido.CANCELADO); // antes: String "CANCELADO"
+            detalle.setEstadoDetalle(EstadoDetallePedido.CANCELADO);
         } else {
-            // Cancelación parcial: se descuentan unidades y se recalcula la línea
             int restantes = activa - aCancelar;
             detalle.setCantidad(restantes);
             detalle.setSubtotalLinea(
@@ -274,21 +283,19 @@ public class PedidoServiceImpl implements PedidoService {
         }
         detallePedidoRepository.save(detalle);
 
-        // Recalcular el subtotal del pedido para que la factura no cobre lo cancelado
         recalcularSubtotal(pedido);
         pedidoRepository.save(pedido);
 
-        // Notificar a Cocina/Bar (según categoría) con la cantidad cancelada
         notificarCancelacionDetalle(detalle, false, motivo, aCancelar);
+        registrarIncidencia(pedido, detalle, TipoIncidencia.CANCELACION, aCancelar, motivo, null);
 
         log.info("Ítem {} — canceladas {} de {} unidades (pedido {})",
                 detalleId, aCancelar, activa, pedido.getId());
 
-        // Si todos los ítems quedaron cancelados → cerrar el pedido completo
         boolean todosCancelados = detallePedidoRepository
                 .findByPedido_Id(pedido.getId())
                 .stream()
-                .allMatch(d -> d.getEstadoDetalle() == EstadoDetallePedido.CANCELADO); // antes: "CANCELADO".equals(...)
+                .allMatch(d -> d.getEstadoDetalle() == EstadoDetallePedido.CANCELADO);
 
         if (todosCancelados) {
             pedido.setEstado(EstadoPedido.CANCELADO);
@@ -296,17 +303,14 @@ public class PedidoServiceImpl implements PedidoService {
             pedido.getMesa().setEstado(EstadoMesa.LIBRE);
             mesaRepository.save(pedido.getMesa());
             pedidoRepository.save(pedido);
-            log.info("Todos los ítems cancelados — pedido {} cerrado automáticamente",
-                    pedido.getId());
         }
 
         return construirRespuesta(obtenerPedidoOFalla(pedido.getId()));
     }
 
     // ─── DEVOLVER ÍTEM (parcial o total) ──────────────────────────────────────
-    // Igual que devolverGlobal: el "se resta del subtotal" y el "permite devolver
-    // antes de ENTREGADO" se corrigen en feature/reglas-cancelacion-devolucion.
-    // Aquí solo se tipa correctamente lo que ya existía.
+    // Solo se permite cuando el ítem está TERMINADO. No se resta del subtotal:
+    // sigue siendo parte del pedido mientras Cocina/Bar lo reprocesan (Bloque 3).
 
     @Override
     @Transactional
@@ -315,41 +319,42 @@ public class PedidoServiceImpl implements PedidoService {
         DetallePedido detalle = obtenerDetalleOFalla(detalleId);
         Pedido pedido = detalle.getPedido();
 
-        if (pedido.getEstado() == EstadoPedido.FACTURADO
-                || pedido.getEstado() == EstadoPedido.CANCELADO) {
+        if (pedido.getEstado() == EstadoPedido.FACTURADO || pedido.getEstado() == EstadoPedido.CANCELADO) {
             throw new BusinessRuleException(
                     "No se puede devolver un ítem de un pedido en estado: " + pedido.getEstado());
+        }
+        if (detalle.getEstadoDetalle() != EstadoDetallePedido.TERMINADO) {
+            throw new BusinessRuleException(
+                    "Solo se puede devolver un ítem TERMINADO. Estado actual: " + detalle.getEstadoDetalle());
         }
 
         validarPropietarioOInstructor(pedido);
 
         int activa    = detalle.getCantidad();
-        int aDevolver = (cantidad != null) ? cantidad : activa;   // null = todas
+        int aDevolver = (cantidad != null) ? cantidad : activa;
 
         if (aDevolver <= 0 || aDevolver > activa) {
             throw new BusinessRuleException(
                     "Cantidad inválida: " + aDevolver + " (unidades activas: " + activa + ")");
         }
 
-        if (aDevolver == activa) {
-            // Devolución total del ítem
-            detalle.setEstadoDetalle(EstadoDetallePedido.DEVUELTO); // antes: String "DEVUELTO"
-        } else {
-            // Devolución parcial: se descuentan unidades y se recalcula la línea
-            int restantes = activa - aDevolver;
-            detalle.setCantidad(restantes);
-            detalle.setSubtotalLinea(
-                    detalle.getPrecioUnitario().multiply(BigDecimal.valueOf(restantes)));
-        }
+        detalle.setEstadoDetalle(EstadoDetallePedido.EN_DEVOLUCION);
         detallePedidoRepository.save(detalle);
 
-        recalcularSubtotal(pedido);
+        EstadoPedido estadoPrevio = pedido.getEstado();
+        boolean primeraDevolucionAbierta = estadoPrevio != EstadoPedido.EN_DEVOLUCION;
+        if (primeraDevolucionAbierta) {
+            pedido.setEstado(EstadoPedido.EN_DEVOLUCION);
+        }
         pedidoRepository.save(pedido);
 
         notificarCancelacionDetalle(detalle, true, motivo, aDevolver);
+        registrarIncidencia(pedido, detalle, TipoIncidencia.DEVOLUCION, aDevolver, motivo,
+                primeraDevolucionAbierta ? estadoPrevio : null);
 
-        log.info("Ítem {} — devueltas {} de {} unidades (pedido {})",
+        log.info("Ítem {} — devueltas {} de {} unidades, sigue facturándose (pedido {})",
                 detalleId, aDevolver, activa, pedido.getId());
+
         return construirRespuesta(obtenerPedidoOFalla(pedido.getId()));
     }
 
@@ -402,7 +407,7 @@ public class PedidoServiceImpl implements PedidoService {
             case LISTO_PARA_SERVIR -> estadoActual == EstadoPedido.EN_PREPARACION;
             case CANCELADO         -> estadoActual != EstadoPedido.FACTURADO
                     && estadoActual != EstadoPedido.CANCELADO;
-            default -> false; // incluye EN_DEVOLUCION: todavía no llega por este canal (ver Bloque 1 del documento)
+            default -> false;
         };
 
         if (!transicionValida) {
@@ -444,16 +449,7 @@ public class PedidoServiceImpl implements PedidoService {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
-    /**
-     * Recalcula el subtotal del pedido sumando solo las líneas vigentes,
-     * es decir, excluyendo los ítems totalmente cancelados o devueltos.
-     * Así la factura nunca cobra unidades que ya no se sirvieron.
-     *
-     * Sin cambios de comportamiento en este bloque: antes comparaba strings
-     * ("CANCELADO"/"DEVUELTO"), ahora compara el enum. El resultado es idéntico.
-     * La regla de que DEVUELTO ya no debería restarse es Bloque 3 — se cambia
-     * en la siguiente rama.
-     */
+    /** Excluye solo CANCELADO/DEVUELTO. EN_DEVOLUCION sigue contando — Bloque 3. */
     private void recalcularSubtotal(Pedido pedido) {
         BigDecimal nuevo = pedido.getDetalles().stream()
                 .filter(d -> d.getEstadoDetalle() != EstadoDetallePedido.CANCELADO
@@ -463,13 +459,6 @@ public class PedidoServiceImpl implements PedidoService {
         pedido.setSubtotal(nuevo);
     }
 
-    /**
-     * NUEVO — junta el Pedido con su historial de incidencias y delega al mapper.
-     * Todos los métodos públicos que devuelven PedidoResponse pasan por aquí
-     * (antes llamaban directo a pedidoMapper.toResponse(pedido)).
-     * En este bloque la lista siempre sale vacía porque nada escribe en
-     * incidencias_pedido todavía.
-     */
     private PedidoResponse construirRespuesta(Pedido pedido) {
         List<IncidenciaPedidoResponse> incidencias = incidenciaPedidoRepository
                 .findByPedido_IdOrderByFechaRegistroDesc(pedido.getId())
@@ -477,6 +466,33 @@ public class PedidoServiceImpl implements PedidoService {
                 .map(pedidoMapper::toIncidenciaResponse)
                 .toList();
         return pedidoMapper.toResponse(pedido, incidencias);
+    }
+
+    /**
+     * Registra el historial de una cancelación/devolución. Las cancelaciones
+     * quedan RESUELTA de inmediato (no hay nada más que esperar). Las
+     * devoluciones quedan EN_PROCESO — el siguiente bloque (listener de
+     * Cocina/Bar) las cierra cuando el ítem vuelve a estar TERMINADO.
+     */
+    private void registrarIncidencia(Pedido pedido, DetallePedido detalle, TipoIncidencia tipo,
+                                     Integer cantidad, String motivo, EstadoPedido estadoPrevio) {
+        IncidenciaPedido inc = new IncidenciaPedido();
+        inc.setPedido(pedido);
+        inc.setDetalle(detalle);
+        inc.setNombreProductoSnapshot(detalle != null ? detalle.getNombreProducto() : null);
+        inc.setTipo(tipo);
+        inc.setCantidadAfectada(cantidad);
+        inc.setMotivo(motivo);
+        inc.setRegistradaPor(UserContextHolder.getCurrentUserId());
+        inc.setEstadoPedidoPrevio(estadoPrevio);
+
+        if (tipo == TipoIncidencia.CANCELACION) {
+            inc.setEstado(EstadoIncidencia.RESUELTA);
+            inc.setFechaResolucion(LocalDateTime.now());
+        } else {
+            inc.setEstado(EstadoIncidencia.EN_PROCESO);
+        }
+        incidenciaPedidoRepository.save(inc);
     }
 
     private void validarPropietarioOInstructor(Pedido pedido) {
@@ -493,10 +509,6 @@ public class PedidoServiceImpl implements PedidoService {
         }
     }
 
-    /**
-     * Enruta la cancelación/devolución de un ítem puntual al módulo correcto
-     * según su categoría (COMIDA → Cocina, BEBIDA → Bar), incluyendo la cantidad.
-     */
     private void notificarCancelacionDetalle(DetallePedido detalle, boolean devolucion,
                                              String motivo, Integer cantidad) {
         CancelacionEvent evento = new CancelacionEvent(
@@ -513,11 +525,6 @@ public class PedidoServiceImpl implements PedidoService {
         }
     }
 
-    /**
-     * Enruta una cancelación/devolución global solo a los módulos que realmente
-     * tengan ítems de su categoría en el pedido (mismo criterio que la confirmación).
-     * cantidad = null → afecta todas las unidades activas de cada ítem.
-     */
     private void notificarCancelacionGlobal(Pedido pedido, boolean devolucion, String motivo) {
         CancelacionEvent evento = new CancelacionEvent(
                 pedido.getId(), null, devolucion, motivo, null);
