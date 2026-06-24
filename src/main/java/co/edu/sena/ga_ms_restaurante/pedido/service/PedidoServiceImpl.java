@@ -14,7 +14,10 @@ import co.edu.sena.ga_ms_restaurante.mesa.repository.MesaRepository;
 import co.edu.sena.ga_ms_restaurante.pedido.dto.request.PedidoCreateRequest;
 import co.edu.sena.ga_ms_restaurante.pedido.dto.response.PedidoResumenResponse;
 import co.edu.sena.ga_ms_restaurante.pedido.dto.response.PedidoResponse;
+import co.edu.sena.ga_ms_restaurante.pedido.enums.EstadoDetallePedido;
 import co.edu.sena.ga_ms_restaurante.pedido.enums.EstadoPedido;
+import co.edu.sena.ga_ms_restaurante.pedido.incidencia.dto.response.IncidenciaPedidoResponse;
+import co.edu.sena.ga_ms_restaurante.pedido.incidencia.repository.IncidenciaPedidoRepository;
 import co.edu.sena.ga_ms_restaurante.pedido.mapper.PedidoMapper;
 import co.edu.sena.ga_ms_restaurante.pedido.model.DetallePedido;
 import co.edu.sena.ga_ms_restaurante.pedido.model.Pedido;
@@ -36,13 +39,14 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class PedidoServiceImpl implements PedidoService {
 
-    private final PedidoRepository        pedidoRepository;
-    private final MesaRepository          mesaRepository;
-    private final PedidoMapper            pedidoMapper;
-    private final PedidoCocinaPublisher   cocinaPublisher;
-    private final PedidoBarPublisher      barPublisher;
-    private final DetallePedidoRepository detallePedidoRepository;
-    private final CancelacionPublisher    cancelacionPublisher;
+    private final PedidoRepository           pedidoRepository;
+    private final MesaRepository             mesaRepository;
+    private final PedidoMapper               pedidoMapper;
+    private final PedidoCocinaPublisher      cocinaPublisher;
+    private final PedidoBarPublisher         barPublisher;
+    private final DetallePedidoRepository    detallePedidoRepository;
+    private final CancelacionPublisher       cancelacionPublisher;
+    private final IncidenciaPedidoRepository incidenciaPedidoRepository; // NUEVO
 
     // ─── CREAR ───────────────────────────────────────────────────────────────
 
@@ -83,7 +87,7 @@ public class PedidoServiceImpl implements PedidoService {
         Pedido guardado = pedidoRepository.save(pedido);
         log.info("Pedido creado: {} — mesa: {}", guardado.getId(), mesa.getNombre());
 
-        return pedidoMapper.toResponse(guardado);
+        return construirRespuesta(guardado);
     }
 
     // ─── CONFIRMAR Y ENVIAR A COCINA/BAR ─────────────────────────────────────
@@ -133,7 +137,7 @@ public class PedidoServiceImpl implements PedidoService {
         }
 
         pedido.setEstado(EstadoPedido.ENVIADO_COCINA);
-        return pedidoMapper.toResponse(pedidoRepository.save(pedido));
+        return construirRespuesta(pedidoRepository.save(pedido));
     }
 
     // ─── MARCAR ENTREGADO ─────────────────────────────────────────────────────
@@ -160,10 +164,11 @@ public class PedidoServiceImpl implements PedidoService {
 
         log.info("Pedido {} marcado como ENTREGADO — mesa {} pasa a POR_PAGAR",
                 pedidoId, mesa.getNombre());
-        return pedidoMapper.toResponse(pedidoRepository.save(pedido));
+        return construirRespuesta(pedidoRepository.save(pedido));
     }
 
     // ─── CANCELAR (global) ────────────────────────────────────────────────────
+    // Sin cambios de regla en este bloque — eso es feature/reglas-cancelacion-devolucion.
 
     @Override
     @Transactional
@@ -192,10 +197,14 @@ public class PedidoServiceImpl implements PedidoService {
             notificarCancelacionGlobal(pedido, false, motivo);
         }
 
-        return pedidoMapper.toResponse(pedidoRepository.save(pedido));
+        return construirRespuesta(pedidoRepository.save(pedido));
     }
 
     // ─── DEVOLVER (global) ────────────────────────────────────────────────────
+    // OJO: esta rama NO corrige todavía el "pedido.setEstado(CANCELADO)" de abajo.
+    // Esa corrección (usar EN_DEVOLUCION y no exigir ENTREGADO) es exactamente
+    // el contenido de la rama feature/reglas-cancelacion-devolucion. Aquí solo
+    // se deja compilando igual que antes.
 
     @Override
     @Transactional
@@ -223,7 +232,7 @@ public class PedidoServiceImpl implements PedidoService {
         notificarCancelacionGlobal(pedido, true, motivo);
 
         log.info("Pedido {} devuelto (global) — mesa {} liberada", pedidoId, mesa.getNombre());
-        return pedidoMapper.toResponse(pedidoRepository.save(pedido));
+        return construirRespuesta(pedidoRepository.save(pedido));
     }
 
     // ─── CANCELAR ÍTEM (parcial o total) ──────────────────────────────────────
@@ -255,7 +264,7 @@ public class PedidoServiceImpl implements PedidoService {
 
         if (aCancelar == activa) {
             // Cancelación total del ítem (comportamiento de siempre)
-            detalle.setEstadoDetalle("CANCELADO");
+            detalle.setEstadoDetalle(EstadoDetallePedido.CANCELADO); // antes: String "CANCELADO"
         } else {
             // Cancelación parcial: se descuentan unidades y se recalcula la línea
             int restantes = activa - aCancelar;
@@ -279,7 +288,7 @@ public class PedidoServiceImpl implements PedidoService {
         boolean todosCancelados = detallePedidoRepository
                 .findByPedido_Id(pedido.getId())
                 .stream()
-                .allMatch(d -> "CANCELADO".equals(d.getEstadoDetalle()));
+                .allMatch(d -> d.getEstadoDetalle() == EstadoDetallePedido.CANCELADO); // antes: "CANCELADO".equals(...)
 
         if (todosCancelados) {
             pedido.setEstado(EstadoPedido.CANCELADO);
@@ -291,10 +300,13 @@ public class PedidoServiceImpl implements PedidoService {
                     pedido.getId());
         }
 
-        return pedidoMapper.toResponse(obtenerPedidoOFalla(pedido.getId()));
+        return construirRespuesta(obtenerPedidoOFalla(pedido.getId()));
     }
 
     // ─── DEVOLVER ÍTEM (parcial o total) ──────────────────────────────────────
+    // Igual que devolverGlobal: el "se resta del subtotal" y el "permite devolver
+    // antes de ENTREGADO" se corrigen en feature/reglas-cancelacion-devolucion.
+    // Aquí solo se tipa correctamente lo que ya existía.
 
     @Override
     @Transactional
@@ -321,7 +333,7 @@ public class PedidoServiceImpl implements PedidoService {
 
         if (aDevolver == activa) {
             // Devolución total del ítem
-            detalle.setEstadoDetalle("DEVUELTO");
+            detalle.setEstadoDetalle(EstadoDetallePedido.DEVUELTO); // antes: String "DEVUELTO"
         } else {
             // Devolución parcial: se descuentan unidades y se recalcula la línea
             int restantes = activa - aDevolver;
@@ -338,7 +350,7 @@ public class PedidoServiceImpl implements PedidoService {
 
         log.info("Ítem {} — devueltas {} de {} unidades (pedido {})",
                 detalleId, aDevolver, activa, pedido.getId());
-        return pedidoMapper.toResponse(obtenerPedidoOFalla(pedido.getId()));
+        return construirRespuesta(obtenerPedidoOFalla(pedido.getId()));
     }
 
     // ─── CONSULTAS ────────────────────────────────────────────────────────────
@@ -346,7 +358,7 @@ public class PedidoServiceImpl implements PedidoService {
     @Override
     @Transactional(readOnly = true)
     public PedidoResponse buscarPorId(UUID id) {
-        return pedidoMapper.toResponse(obtenerPedidoOFalla(id));
+        return construirRespuesta(obtenerPedidoOFalla(id));
     }
 
     @Override
@@ -390,7 +402,7 @@ public class PedidoServiceImpl implements PedidoService {
             case LISTO_PARA_SERVIR -> estadoActual == EstadoPedido.EN_PREPARACION;
             case CANCELADO         -> estadoActual != EstadoPedido.FACTURADO
                     && estadoActual != EstadoPedido.CANCELADO;
-            default -> false;
+            default -> false; // incluye EN_DEVOLUCION: todavía no llega por este canal (ver Bloque 1 del documento)
         };
 
         if (!transicionValida) {
@@ -436,14 +448,35 @@ public class PedidoServiceImpl implements PedidoService {
      * Recalcula el subtotal del pedido sumando solo las líneas vigentes,
      * es decir, excluyendo los ítems totalmente cancelados o devueltos.
      * Así la factura nunca cobra unidades que ya no se sirvieron.
+     *
+     * Sin cambios de comportamiento en este bloque: antes comparaba strings
+     * ("CANCELADO"/"DEVUELTO"), ahora compara el enum. El resultado es idéntico.
+     * La regla de que DEVUELTO ya no debería restarse es Bloque 3 — se cambia
+     * en la siguiente rama.
      */
     private void recalcularSubtotal(Pedido pedido) {
         BigDecimal nuevo = pedido.getDetalles().stream()
-                .filter(d -> !"CANCELADO".equalsIgnoreCase(d.getEstadoDetalle())
-                        && !"DEVUELTO".equalsIgnoreCase(d.getEstadoDetalle()))
+                .filter(d -> d.getEstadoDetalle() != EstadoDetallePedido.CANCELADO
+                        && d.getEstadoDetalle() != EstadoDetallePedido.DEVUELTO)
                 .map(DetallePedido::getSubtotalLinea)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         pedido.setSubtotal(nuevo);
+    }
+
+    /**
+     * NUEVO — junta el Pedido con su historial de incidencias y delega al mapper.
+     * Todos los métodos públicos que devuelven PedidoResponse pasan por aquí
+     * (antes llamaban directo a pedidoMapper.toResponse(pedido)).
+     * En este bloque la lista siempre sale vacía porque nada escribe en
+     * incidencias_pedido todavía.
+     */
+    private PedidoResponse construirRespuesta(Pedido pedido) {
+        List<IncidenciaPedidoResponse> incidencias = incidenciaPedidoRepository
+                .findByPedido_IdOrderByFechaRegistroDesc(pedido.getId())
+                .stream()
+                .map(pedidoMapper::toIncidenciaResponse)
+                .toList();
+        return pedidoMapper.toResponse(pedido, incidencias);
     }
 
     private void validarPropietarioOInstructor(Pedido pedido) {
