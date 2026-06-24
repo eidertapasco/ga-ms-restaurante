@@ -1,5 +1,6 @@
 package co.edu.sena.ga_ms_restaurante.pedido.dto.response;
 
+import co.edu.sena.ga_ms_restaurante.pedido.enums.EstadoDetallePedido;
 import lombok.Data;
 
 import java.math.BigDecimal;
@@ -18,6 +19,7 @@ public class DetallePedidoResponse {
     private String observaciones;
 
     // Estado individual del ítem según Cocina/Bar.
-    // Valores: PENDIENTE | PREPARANDO | TERMINADO | CANCELADO | DEVUELTO
-    private String estadoDetalle;
+    // Antes era String libre; ahora es el enum EstadoDetallePedido.
+    // Jackson lo serializa igual que antes (como string en el JSON: "CANCELADO", "LISTO_PARA_SERVIR", etc.)
+    private EstadoDetallePedido estadoDetalle;
 }

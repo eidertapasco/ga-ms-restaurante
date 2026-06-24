@@ -1,5 +1,6 @@
 package co.edu.sena.ga_ms_restaurante.pedido.model;
 
+import co.edu.sena.ga_ms_restaurante.pedido.enums.EstadoDetallePedido;
 import jakarta.persistence.*;
 import lombok.*;
 import java.math.BigDecimal;
@@ -46,15 +47,15 @@ public class DetallePedido {
     private String observaciones;
 
     /**
-     * Estado informativo del ítem según Cocina o Bar.
-     * No afecta la lógica de negocio (esa la gobierna Pedido.estado).
+     * Estado individual del ítem según Cocina o Bar.
+     * Antes era un String libre; se migró a EstadoDetallePedido (enum) para
+     * eliminar inconsistencias por typos ("Listo" vs "LISTO") y para que el
+     * compilador detecte usos inválidos en tiempo de compilación.
      * Se actualiza vía EstadoPlatoListener cuando Cocina/Bar notifican
      * que un plato o bebida individual cambió de estado.
-     *
-     * Valores: "PENDIENTE" | "PREPARANDO" | "TERMINADO" | "LISTO"
-     * La columna se crea automáticamente con ddl-auto=update.
      */
     @Builder.Default
-    @Column(name = "estado_detalle", length = 30)
-    private String estadoDetalle = "PENDIENTE";
+    @Enumerated(EnumType.STRING)
+    @Column(name = "estado_detalle", length = 30, nullable = false)
+    private EstadoDetallePedido estadoDetalle = EstadoDetallePedido.PENDIENTE;
 }

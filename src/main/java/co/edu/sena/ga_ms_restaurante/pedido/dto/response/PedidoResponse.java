@@ -1,6 +1,7 @@
 package co.edu.sena.ga_ms_restaurante.pedido.dto.response;
 
 import co.edu.sena.ga_ms_restaurante.pedido.enums.EstadoPedido;
+import co.edu.sena.ga_ms_restaurante.pedido.incidencia.dto.response.IncidenciaPedidoResponse;
 import lombok.Data;
 
 import java.math.BigDecimal;
@@ -22,4 +23,12 @@ public class PedidoResponse {
     private LocalDateTime fechaCreacion;
     private LocalDateTime fechaCierre;
     private List<DetallePedidoResponse> detalles;
+
+    /**
+     * NUEVO — historial de cancelaciones/devoluciones de este pedido (Bloque 4).
+     * En este bloque siempre llega vacío ([]): el modelo ya existe y ya se
+     * expone, pero todavía nadie escribe filas en incidencias_pedido — eso
+     * empieza en la rama feature/reglas-cancelacion-devolucion.
+     */
+    private List<IncidenciaPedidoResponse> incidencias;
 }

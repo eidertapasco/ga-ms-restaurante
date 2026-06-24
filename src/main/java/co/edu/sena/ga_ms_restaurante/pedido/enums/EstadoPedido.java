@@ -6,6 +6,11 @@ public enum EstadoPedido {
     EN_PREPARACION,
     LISTO_PARA_SERVIR,
     ENTREGADO,
+    /**
+     * NUEVO — al menos un ítem del pedido fue devuelto y Cocina/Bar lo está
+     * reprocesando. Antes de este cambio, devolverGlobal() usaba CANCELADO
+     * por no existir este valor. */
+    EN_DEVOLUCION,
     FACTURADO,
     CANCELADO
 }

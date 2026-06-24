@@ -39,12 +39,12 @@ public class EstadoPedidoListener {
      * Normaliza los estados que cualquier módulo externo (Cocina o Bar) puede enviar
      * y los traduce al enum EstadoPedido de Restaurante.
      *
-     * Blindaje defensivo: aplica para ambos módulos por igual.
-     * Si alguno ya envía el nombre correcto, el case "default" lo maneja sin problema.
-     *
-     * Traducciones conocidas:
-     *   "LISTO"      → LISTO_PARA_SERVIR  (Bar usa su terminología interna)
-     *   "PREPARANDO" → EN_PREPARACION     (alias que puede usar cualquier módulo)
+     * MODIFICADO: se agrega el caso "DEVOLUCION" → "EN_DEVOLUCION" de forma
+     * puramente defensiva. Confirmado en el código real de Cocina y Bar que
+     * NINGUNO de los dos publica este valor hoy (sus métodos de notificación
+     * de estado de pedido devuelven null y no envían nada para sus estados
+     * internos CANCELADO/DEVOLUCION) — pero si algún día lo hicieran, este
+     * switch ya no fallaría con IllegalArgumentException.
      */
     private EstadoPedido traducirEstado(String estadoRaw) {
         if (estadoRaw == null) throw new IllegalArgumentException("Estado nulo recibido");
@@ -52,6 +52,7 @@ public class EstadoPedidoListener {
         String estadoNormalizado = switch (estadoRaw.toUpperCase()) {
             case "LISTO"      -> "LISTO_PARA_SERVIR";
             case "PREPARANDO" -> "EN_PREPARACION";
+            case "DEVOLUCION" -> "EN_DEVOLUCION";
             default           -> estadoRaw.toUpperCase();
         };
 
