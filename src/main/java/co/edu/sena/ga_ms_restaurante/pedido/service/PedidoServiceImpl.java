@@ -429,6 +429,53 @@ public class PedidoServiceImpl implements PedidoService {
         log.info("Pedido {} actualizado a {} por evento RabbitMQ", pedidoId, nuevoEstado);
     }
 
+    @Override
+    @Transactional
+    public void actualizarEstadoDetalleDesdeEvento(UUID detalleId, EstadoDetallePedido nuevoEstado) {
+
+        DetallePedido detalle = detallePedidoRepository.findById(detalleId).orElse(null);
+        if (detalle == null) {
+            log.warn("Ítem {} no encontrado al procesar evento de plato — ignorado", detalleId);
+            return;
+        }
+
+        EstadoDetallePedido estadoAnterior = detalle.getEstadoDetalle();
+        detalle.setEstadoDetalle(nuevoEstado);
+        detallePedidoRepository.save(detalle);
+
+        if (estadoAnterior == EstadoDetallePedido.EN_DEVOLUCION
+                && nuevoEstado == EstadoDetallePedido.TERMINADO) {
+            cerrarDevolucionResuelta(detalle);
+        }
+    }
+
+    /** Cierra la incidencia del ítem y, si ya no quedan devoluciones abiertas, regresa el pedido a su estado anterior. */
+    private void cerrarDevolucionResuelta(DetallePedido detalle) {
+        incidenciaPedidoRepository.findByDetalle_IdAndEstado(detalle.getId(), EstadoIncidencia.EN_PROCESO)
+                .ifPresent(incidencia -> {
+                    incidencia.setEstado(EstadoIncidencia.RESUELTA);
+                    incidencia.setFechaResolucion(LocalDateTime.now());
+                    incidenciaPedidoRepository.save(incidencia);
+
+                    Pedido pedido = detalle.getPedido();
+                    boolean quedanAbiertas = pedido.getDetalles().stream()
+                            .anyMatch(d -> d.getEstadoDetalle() == EstadoDetallePedido.EN_DEVOLUCION);
+
+                    if (!quedanAbiertas && pedido.getEstado() == EstadoPedido.EN_DEVOLUCION) {
+                        EstadoPedido estadoARestaurar = incidenciaPedidoRepository
+                                .findFirstByPedido_IdAndEstadoPedidoPrevioIsNotNullOrderByFechaRegistroDesc(pedido.getId())
+                                .map(IncidenciaPedido::getEstadoPedidoPrevio)
+                                .orElseGet(() -> {
+                                    log.warn("Pedido {} sin estadoPedidoPrevio registrado — se asume ENTREGADO", pedido.getId());
+                                    return EstadoPedido.ENTREGADO;
+                                });
+                        pedido.setEstado(estadoARestaurar);
+                        pedidoRepository.save(pedido);
+                        log.info("Pedido {} sale de EN_DEVOLUCION → {}", pedido.getId(), estadoARestaurar);
+                    }
+                });
+    }
+
     // ─── HELPERS PRIVADOS ─────────────────────────────────────────────────────
 
     private Pedido obtenerPedidoOFalla(UUID id) {
