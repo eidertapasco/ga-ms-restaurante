@@ -36,7 +36,7 @@ public interface PedidoService {
     List<PedidoResumenResponse> listarPorMesa(UUID mesaId);
 
     /** Llamado por EstadoPedidoListener cuando Cocina/Bar actualizan el estado del pedido. */
-    void actualizarEstadoDesdeEvento(UUID pedidoId, EstadoPedido nuevoEstado);
+    void actualizarEstadoDesdeEvento(UUID pedidoId, EstadoPedido nuevoEstado, String modulo);
 
     /** Llamado por EstadoPlatoListener cuando Cocina/Bar actualizan el estado de un ítem puntual. */
     void actualizarEstadoDetalleDesdeEvento(UUID detalleId, EstadoDetallePedido nuevoEstado);
