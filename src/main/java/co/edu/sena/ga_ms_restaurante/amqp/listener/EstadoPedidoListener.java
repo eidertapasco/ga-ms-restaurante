@@ -23,7 +23,7 @@ public class EstadoPedidoListener {
 
         try {
             EstadoPedido nuevoEstado = traducirEstado(evento.getNuevoEstado());
-            pedidoService.actualizarEstadoDesdeEvento(evento.getIdPedido(), nuevoEstado);
+            pedidoService.actualizarEstadoDesdeEvento(evento.getIdPedido(), nuevoEstado, evento.getModulo());
 
         } catch (IllegalArgumentException e) {
             log.error("Estado desconocido recibido de {}: '{}' — evento ignorado",

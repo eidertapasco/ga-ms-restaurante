@@ -53,6 +53,16 @@ public class Pedido {
     @Column(name = "fecha_cierre")
     private LocalDateTime fechaCierre;
 
+    /** Cocina ya avisó LISTO para todo lo suyo de este pedido. */
+    @Builder.Default
+    @Column(name = "cocina_lista", nullable = false)
+    private boolean cocinaLista = false;
+
+    /** Bar ya avisó LISTO para todo lo suyo de este pedido. */
+    @Builder.Default
+    @Column(name = "bar_lista", nullable = false)
+    private boolean barLista = false;
+
     @ToString.Exclude
     @EqualsAndHashCode.Exclude
     @OneToMany(mappedBy = "pedido", cascade = CascadeType.ALL, orphanRemoval = true)

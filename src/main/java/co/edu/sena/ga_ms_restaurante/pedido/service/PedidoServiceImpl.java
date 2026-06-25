@@ -394,13 +394,32 @@ public class PedidoServiceImpl implements PedidoService {
 
     @Override
     @Transactional
-    public void actualizarEstadoDesdeEvento(UUID pedidoId, EstadoPedido nuevoEstado) {
+    public void actualizarEstadoDesdeEvento(UUID pedidoId, EstadoPedido nuevoEstado, String modulo) {
 
         Pedido pedido = pedidoRepository.findById(pedidoId)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Pedido no encontrado con id: " + pedidoId));
 
         EstadoPedido estadoActual = pedido.getEstado();
+
+        if (nuevoEstado == EstadoPedido.LISTO_PARA_SERVIR) {
+            if ("COCINA".equalsIgnoreCase(modulo)) pedido.setCocinaLista(true);
+            if ("BAR".equalsIgnoreCase(modulo))    pedido.setBarLista(true);
+
+            boolean necesitaCocina = pedido.getDetalles().stream()
+                    .anyMatch(d -> "COMIDA".equalsIgnoreCase(d.getCategoria()));
+            boolean necesitaBar = pedido.getDetalles().stream()
+                    .anyMatch(d -> "BEBIDA".equalsIgnoreCase(d.getCategoria()));
+
+            boolean todosListos = (!necesitaCocina || pedido.isCocinaLista())
+                    && (!necesitaBar || pedido.isBarLista());
+
+            if (!todosListos) {
+                pedidoRepository.save(pedido);
+                log.info("Pedido {} — {} ya está listo, falta el otro módulo", pedidoId, modulo);
+                return;
+            }
+        }
 
         boolean transicionValida = switch (nuevoEstado) {
             case EN_PREPARACION    -> estadoActual == EstadoPedido.ENVIADO_COCINA;
