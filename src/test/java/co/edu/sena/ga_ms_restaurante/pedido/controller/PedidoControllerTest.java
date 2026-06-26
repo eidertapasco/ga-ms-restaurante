@@ -18,12 +18,14 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.math.BigDecimal;
+import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(PedidoController.class)
@@ -39,7 +41,7 @@ public class PedidoControllerTest {
     @MockitoBean
     private PedidoService pedidoService;
 
-    // Helper para crear un detalle válido y pasar la validación @Valid del DTO
+    // Helper para crear un detalle válido
     private DetallePedidoRequest crearDetalleValido() {
         DetallePedidoRequest detalle = new DetallePedidoRequest();
         detalle.setProductoId("PROD-01");
@@ -51,16 +53,16 @@ public class PedidoControllerTest {
     }
 
     // ==========================================
-    // CP09: Abrir/Crear pedido en una mesa
+    // HU12: Gestionar carrito de pedidos
     // ==========================================
 
     @Test
-    @DisplayName("CP09.1: Apertura exitosa de pedido en mesa libre")
-    void testCrearPedidoExitoso() throws Exception {
+    @DisplayName("CP12.1 - Gestión completa y confirmación del carrito de pedidos")
+    void testConfirmarCarritoExitoso() throws Exception {
         PedidoCreateRequest requestDTO = new PedidoCreateRequest();
         requestDTO.setMesaId(UUID.randomUUID());
         requestDTO.setNumeroComensales(4);
-        requestDTO.setDetalles(List.of(crearDetalleValido())); // <-- ¡Aquí le mandamos el ítem válido!
+        requestDTO.setDetalles(List.of(crearDetalleValido())); // Carrito con productos
 
         Mockito.when(pedidoService.crear(any(PedidoCreateRequest.class)))
                 .thenReturn(new PedidoResponse());
@@ -68,33 +70,32 @@ public class PedidoControllerTest {
         mockMvc.perform(post("/api/pedidos")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(requestDTO)))
-                .andExpect(status().isCreated());
+                .andExpect(status().isCreated()); // Espera un 201 Created
     }
 
     @Test
-    @DisplayName("CP09.2: Bloqueo al abrir pedido en mesa ocupada")
-    void testCrearPedidoMesaOcupada() throws Exception {
+    @DisplayName("CP12.2 - Vaciado de carrito y validación de estado sin productos")
+    void testValidacionCarritoVacio() throws Exception {
         PedidoCreateRequest requestDTO = new PedidoCreateRequest();
         requestDTO.setMesaId(UUID.randomUUID());
         requestDTO.setNumeroComensales(4);
-        requestDTO.setDetalles(List.of(crearDetalleValido())); // <-- ¡Aquí también!
+        requestDTO.setDetalles(Collections.emptyList()); // Carrito vacío sin productos
 
-        // Simulamos que el backend bloquea por regla de negocio
-        Mockito.when(pedidoService.crear(any(PedidoCreateRequest.class)))
-                .thenThrow(new BusinessRuleException("La mesa no está disponible"));
-
+        // Como el @NotEmpty valida que haya productos, no llega al servicio y lanza un Error 400 Bad Request
         mockMvc.perform(post("/api/pedidos")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(requestDTO)))
-                .andExpect(status().isUnprocessableEntity());
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.codigo").value(400))
+                .andExpect(jsonPath("$.mensaje").exists());
     }
 
     // ==========================================
-    // CP15: Consultar detalle de un pedido activo
+    // HU17: Consultar estado del pedido
     // ==========================================
 
     @Test
-    @DisplayName("CP15.1: Consultar detalle de pedido exitosamente")
+    @DisplayName("CP17.1: Consultar estado de pedido exitosamente")
     void testConsultarPedidoPorId() throws Exception {
         UUID idPedido = UUID.randomUUID();
 
@@ -106,11 +107,10 @@ public class PedidoControllerTest {
     }
 
     @Test
-    @DisplayName("CP15.2: Consultar pedido que no existe")
+    @DisplayName("CP17.2: Consultar estado de pedido que no existe")
     void testConsultarPedidoNoEncontrado() throws Exception {
         UUID idPedido = UUID.randomUUID();
 
-        // Simulamos el error 404 si el pedido no existe
         Mockito.when(pedidoService.buscarPorId(eq(idPedido)))
                 .thenThrow(new ResourceNotFoundException("El pedido no existe"));
 
@@ -119,11 +119,11 @@ public class PedidoControllerTest {
     }
 
     // ==========================================
-    // CP20: Actualizar estado del pedido (Confirmar)
+    // HU20: Actualizar estado del pedido
     // ==========================================
 
     @Test
-    @DisplayName("CP20.1: Confirmación exitosa del pedido (Enviar a cocina)")
+    @DisplayName("CP20.1: Avance exitoso del estado operativo del pedido")
     void testConfirmarPedidoExitoso() throws Exception {
         UUID idPedido = UUID.randomUUID();
 
@@ -135,19 +135,19 @@ public class PedidoControllerTest {
     }
 
     @Test
-    @DisplayName("CP20.2: Bloqueo por estado no válido al confirmar")
+    @DisplayName("CP20.2: Bloqueo por transición de estado no permitida")
     void testConfirmarPedidoInvalido() throws Exception {
         UUID idPedido = UUID.randomUUID();
 
         Mockito.when(pedidoService.confirmarYEnviar(eq(idPedido)))
-                .thenThrow(new BusinessRuleException("Solo se pueden confirmar pedidos en estado BORRADOR"));
+                .thenThrow(new BusinessRuleException("Transición de estado no permitida"));
 
         mockMvc.perform(patch("/api/pedidos/" + idPedido + "/confirmar"))
                 .andExpect(status().isUnprocessableEntity());
     }
 
     // ==========================================
-    // CP21: Finalizar entrega del pedido (La única con 3 CPs)
+    // HU21: Finalizar entrega del pedido (La que tiene 3 CPs)
     // ==========================================
 
     @Test
@@ -163,15 +163,15 @@ public class PedidoControllerTest {
     }
 
     @Test
-    @DisplayName("CP21.2: Bloqueo por estado no válido y fallos técnicos")
-    void testEntregarPedidoError() throws Exception {
+    @DisplayName("CP21.2: Bloqueo si el pedido no se encuentra en estado válido")
+    void testEntregarPedidoErrorEstado() throws Exception {
         UUID idPedido = UUID.randomUUID();
 
         Mockito.when(pedidoService.marcarEntregado(eq(idPedido)))
-                .thenThrow(new RuntimeException("Error de conexión al intentar finalizar la entrega"));
+                .thenThrow(new BusinessRuleException("El pedido no está listo para servir"));
 
         mockMvc.perform(patch("/api/pedidos/" + idPedido + "/entregar"))
-                .andExpect(status().isInternalServerError());
+                .andExpect(status().isUnprocessableEntity());
     }
 
     @Test
